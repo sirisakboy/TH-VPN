@@ -29,6 +29,32 @@ object ServersData {
             isVip = true
         ),
         VpnServer(
+            id = "vpnjantit-th-tcp",
+            name = "VPNJantit TH-Bangkok (OpenVPN TCP 2501)",
+            country = "Thailand",
+            countryCode = "TH",
+            city = "Bangkok",
+            host = "th1.vpnjantit.com",
+            port = 2501,
+            protocol = TunnelProtocol.OPENVPN_TCP,
+            latencyMs = 14,
+            loadPercent = 35,
+            isVip = true
+        ),
+        VpnServer(
+            id = "vpnjantit-th-udp",
+            name = "VPNJantit TH-Bangkok (OpenVPN UDP 2500)",
+            country = "Thailand",
+            countryCode = "TH",
+            city = "Bangkok",
+            host = "th1.vpnjantit.com",
+            port = 2500,
+            protocol = TunnelProtocol.OPENVPN_UDP,
+            latencyMs = 11,
+            loadPercent = 30,
+            isVip = true
+        ),
+        VpnServer(
             id = "th-01",
             name = "Thailand TH-Bangkok Fast",
             country = "Thailand",
