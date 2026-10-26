@@ -1,0 +1,8 @@
+{
+  "name": "H25 VPN",
+  "description": "High-speed SSH and OpenVPN tunnel client with custom carrier payloads, server selector, network telemetry, proxy sharing, and split tunneling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,171 @@
+name: Android CI/CD - Movie App Auto Build & Release
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+  schedule:
+    # รันอัตโนมัติทุกวันที่ 1 ของเดือน เวลา 00:00 UTC
+    - cron: '0 0 1 * *'
+
+permissions:
+  contents: write
+  packages: write
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: 🚀 Build Movie App APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 📥 Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ☕ Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1' # ปรับให้ตรงตามความต้องการของ Android Gradle Plugin (AGP)
+          validate-wrappers: false
+
+      - name: 🛠️ Ensure Gradle Wrapper is Executable
+        run: chmod +x gradlew
+
+      - name: 🔑 Setup Android Keystore (Auto-Generate)
+        run: |
+          echo "🔑 Preparing keystores..."
+          # Create dummy .env from .env.example to prevent Secrets Plugin configuration crash
+          if [ -f ".env.example" ]; then
+            cp .env.example .env
+            echo "✅ Created .env from .env.example"
+          else
+            touch .env
+            echo "⚠️ .env.example not found, created empty .env"
+          fi
+
+          # สร้าง Debug Keystore อัตโนมัติเพื่อให้ Build ผ่านชัวร์ๆ
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -keypass android \
+              -alias androiddebugkey \
+              -dname "CN=MotorBoy,O=MovieApp,C=TH" \
+              -storetype JKS \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+          
+          # สร้าง Upload Keystore สำรองสำหรับ Release Build
+          if [ ! -f "my-upload-key.jks" ]; then
+            keytool -genkeypair -v \
+              -keystore my-upload-key.jks \
+              -storepass android \
+              -keypass android \
+              -alias upload \
+              -dname "CN=MotorBoy,O=MovieApp,C=TH" \
+              -storetype JKS \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+          echo "✅ Keystores ready"
+
+      - name: 📦 Build Android APK (${{ github.event.inputs.build_type || 'debug' }})
+        run: |
+          BUILD_CHOICE="${{ github.event.inputs.build_type }}"
+          
+          if [ "$BUILD_CHOICE" = "release" ]; then
+            ./gradlew assembleRelease --info --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=512m -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError"
+          else
+            ./gradlew assembleDebug --info --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=512m -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError"
+          fi
+
+      - name: 🏷️ Collect & Rename Output APKs
+        id: package_apk
+        run: |
+          mkdir -p output_apks
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
+          
+          FOUND_APK=0
+          for apk in $(find app/build/outputs/apk -name "*.apk" 2>/dev/null); do
+            VARIANT=$(basename $(dirname "$apk"))
+            TARGET_NAME="MotorBoy-MovieApp-${VARIANT}-${TIMESTAMP}-${SHORT_SHA}.apk"
+            cp "$apk" "output_apks/${TARGET_NAME}"
+            echo "✅ Packaged: ${TARGET_NAME}"
+            FOUND_APK=1
+          done
+          
+          if [ $FOUND_APK -eq 0 ]; then
+            echo "❌ No APK files found!"
+            exit 1
+          fi
+          
+          PRIMARY_APK=$(ls output_apks/*.apk | head -n 1)
+          echo "primary_name=$(basename ${PRIMARY_APK})" >> $GITHUB_OUTPUT
+
+      - name: 📤 Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MovieApp-APK-${{ github.run_number }}
+          path: output_apks/*.apk
+          retention-days: 1
+
+      - name: 🚀 Auto-Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: success() && github.event_name != 'pull_request'
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Movie App Build #${{ github.run_number }}"
+          body: |
+            ### 📱 MotorBoy Movie App Android APK Build #${{ github.run_number }}
+            - **Branch**: `${{ github.ref_name }}`
+            - **Commit**: ${{ github.sha }}
+            
+            📥 ดาวน์โหลดไฟล์ APK ด้านล่างเพื่อติดตั้งได้เลย!
+          files: output_apks/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 Generate Build Summary
+        run: |
+          echo "## 🚀 Android APK Build Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| รายละเอียด | ข้อมูล |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📱 **ชื่อแอป** | **MotorBoy Movie App** |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📦 **ไฟล์ APK** | \`${{ steps.package_apk.outputs.primary_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔢 **Build Run** | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🌿 **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📥 วิธีดาวน์โหลด:" >> $GITHUB_STEP_SUMMARY
+          echo "ไปที่แท็บ **Releases** ด้านขวามือของ Repository เพื่อโหลด APK ล่าสุด" >> $GITHUB_STEP_SUMMARY

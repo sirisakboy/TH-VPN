@@ -1,0 +1,162 @@
+package com.example.h25vpn.data
+
+object ServersData {
+    val defaultServers = listOf(
+        VpnServer(
+            id = "sg-01",
+            name = "Singapore SG-01 (High Speed)",
+            country = "Singapore",
+            countryCode = "SG",
+            city = "Jurong",
+            host = "sg1.h25vpn.net",
+            port = 443,
+            protocol = TunnelProtocol.SSH_SSL,
+            latencyMs = 24,
+            loadPercent = 38,
+            isVip = false
+        ),
+        VpnServer(
+            id = "sg-gaming",
+            name = "Singapore SG-VIP (Low Ping Gaming)",
+            country = "Singapore",
+            countryCode = "SG",
+            city = "Changi",
+            host = "sg-vip.h25vpn.net",
+            port = 1194,
+            protocol = TunnelProtocol.OPENVPN_UDP,
+            latencyMs = 18,
+            loadPercent = 22,
+            isVip = true
+        ),
+        VpnServer(
+            id = "th-01",
+            name = "Thailand TH-Bangkok Fast",
+            country = "Thailand",
+            countryCode = "TH",
+            city = "Bangkok",
+            host = "th1.h25vpn.net",
+            port = 443,
+            protocol = TunnelProtocol.SSH_SSL,
+            latencyMs = 12,
+            loadPercent = 45,
+            isVip = false
+        ),
+        VpnServer(
+            id = "th-02",
+            name = "Thailand TH-True/AIS Direct",
+            country = "Thailand",
+            countryCode = "TH",
+            city = "Nonthaburi",
+            host = "th2.h25vpn.net",
+            port = 80,
+            protocol = TunnelProtocol.SSH_DIRECT,
+            latencyMs = 15,
+            loadPercent = 52,
+            isVip = false
+        ),
+        VpnServer(
+            id = "jp-01",
+            name = "Japan JP-Tokyo Ultra",
+            country = "Japan",
+            countryCode = "JP",
+            city = "Tokyo",
+            host = "jp1.h25vpn.net",
+            port = 443,
+            protocol = TunnelProtocol.WEBSOCKET,
+            latencyMs = 54,
+            loadPercent = 31,
+            isVip = false
+        ),
+        VpnServer(
+            id = "hk-01",
+            name = "Hong Kong HK-Central",
+            country = "Hong Kong",
+            countryCode = "HK",
+            city = "Kowloon",
+            host = "hk1.h25vpn.net",
+            port = 443,
+            protocol = TunnelProtocol.SSH_SSL,
+            latencyMs = 42,
+            loadPercent = 64,
+            isVip = false
+        ),
+        VpnServer(
+            id = "us-01",
+            name = "United States US-West",
+            country = "United States",
+            countryCode = "US",
+            city = "Los Angeles",
+            host = "us1.h25vpn.net",
+            port = 1194,
+            protocol = TunnelProtocol.OPENVPN_TCP,
+            latencyMs = 148,
+            loadPercent = 49,
+            isVip = false
+        ),
+        VpnServer(
+            id = "us-streaming",
+            name = "United States US-Streaming 4K",
+            country = "United States",
+            countryCode = "US",
+            city = "Dallas",
+            host = "us-stream.h25vpn.net",
+            port = 443,
+            protocol = TunnelProtocol.SSH_SSL,
+            latencyMs = 162,
+            loadPercent = 58,
+            isVip = true
+        ),
+        VpnServer(
+            id = "de-01",
+            name = "Germany DE-Frankfurt Fast",
+            country = "Germany",
+            countryCode = "DE",
+            city = "Frankfurt",
+            host = "de1.h25vpn.net",
+            port = 443,
+            protocol = TunnelProtocol.SSH_SSL,
+            latencyMs = 175,
+            loadPercent = 41,
+            isVip = false
+        ),
+        VpnServer(
+            id = "uk-01",
+            name = "United Kingdom UK-London",
+            country = "United Kingdom",
+            countryCode = "UK",
+            city = "London",
+            host = "uk1.h25vpn.net",
+            port = 443,
+            protocol = TunnelProtocol.SSH_SSL,
+            latencyMs = 188,
+            loadPercent = 37,
+            isVip = false
+        ),
+        VpnServer(
+            id = "nl-01",
+            name = "Netherlands NL-Amsterdam P2P",
+            country = "Netherlands",
+            countryCode = "NL",
+            city = "Amsterdam",
+            host = "nl1.h25vpn.net",
+            port = 1194,
+            protocol = TunnelProtocol.OPENVPN_UDP,
+            latencyMs = 170,
+            loadPercent = 29,
+            isVip = false
+        ),
+        VpnServer(
+            id = "au-01",
+            name = "Australia AU-Sydney",
+            country = "Australia",
+            countryCode = "AU",
+            city = "Sydney",
+            host = "au1.h25vpn.net",
+            port = 443,
+            protocol = TunnelProtocol.WEBSOCKET,
+            latencyMs = 110,
+            loadPercent = 25,
+            isVip = true
+        )
+    )
+}
