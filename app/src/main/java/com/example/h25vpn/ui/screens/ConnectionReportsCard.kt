@@ -106,7 +106,7 @@ fun ConnectionReportsCard() {
                     try {
                         val result = withContext(Dispatchers.IO) {
                             ConnectionReports.record("external_vpn_probe_started")
-                            probe.measure(null, context.getSystemService(ConnectivityManager::class.java))
+                            probe.measure(null, requireNotNull(context.getSystemService(ConnectivityManager::class.java)))
                         }
                         externalResult = "VPN ที่มีอยู่: %.2f Mbps • ไม่ทราบไฟล์/เส้นทางภายใน".format(result.mbps)
                         ConnectionReports.record(if (result.passed) "external_vpn_probe_passed" else "external_vpn_probe_slow", mbps = result.mbps)

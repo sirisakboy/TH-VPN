@@ -71,7 +71,9 @@ jobs:
           echo "✅ Keystore ready"
 
       - name: 🧪 Test route identity and speed threshold
-        run: ./gradlew testDebugUnitTest --no-configuration-cache
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --no-configuration-cache 2>&1 | tee gradle_build.log
 
       - name: 📦 Build Android APK (${{ github.event.inputs.build_type || 'release' }})
         run: |
