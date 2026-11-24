@@ -1,7 +1,6 @@
 package com.example.h25vpn.ui.screens
 
 import android.app.Activity
-import android.content.Intent
 import android.net.VpnService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,19 +19,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.SnackbarHost
@@ -77,6 +76,7 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     onNavigateToServers: () -> Unit,
     onNavigateToTweaks: () -> Unit,
+    onNavigateToPromoHub: () -> Unit,
     onNavigateToProxyShare: () -> Unit,
     onNavigateToSplitTunnel: () -> Unit,
     onNavigateToLogs: () -> Unit,
@@ -91,12 +91,11 @@ fun HomeScreen(
     val selectedServer by VpnRepository.selectedServer.collectAsState()
     val selectedTweak by VpnRepository.selectedTweak.collectAsState()
     val networkStats by VpnRepository.networkStats.collectAsState()
-    val remainingSeconds by VpnRepository.remainingTimeSeconds.collectAsState()
+    val sessionSeconds by VpnRepository.sessionDurationSec.collectAsState()
+    val isSyncing by VpnRepository.isSyncingServers.collectAsState()
 
-    var showAddTimeDialog by remember { mutableStateOf(false) }
     var showSpeedTestDialog by remember { mutableStateOf(false) }
 
-    // Launcher for standard Android VpnService permission request
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -104,21 +103,25 @@ fun HomeScreen(
             VpnRepository.connect(context)
         } else {
             scope.launch {
-                snackbarHostState.showSnackbar("VPN permission denied by user")
+                snackbarHostState.showSnackbar("กรุณากดอนุญาตสิทธิ์ VPN เพื่อเชื่อมต่อ")
             }
         }
     }
 
     fun handleConnectClick() {
-        if (connectionState == ConnectionState.CONNECTED) {
-            VpnRepository.disconnect(context)
-        } else if (connectionState == ConnectionState.DISCONNECTED) {
-            val vpnIntent = VpnService.prepare(context)
-            if (vpnIntent != null) {
-                vpnPermissionLauncher.launch(vpnIntent)
-            } else {
-                VpnRepository.connect(context)
+        when (connectionState) {
+            ConnectionState.CONNECTED, ConnectionState.CONNECTING, ConnectionState.AUTHENTICATING -> {
+                VpnRepository.disconnect(context)
             }
+            ConnectionState.DISCONNECTED, ConnectionState.ERROR -> {
+                val vpnIntent = VpnService.prepare(context)
+                if (vpnIntent != null) {
+                    vpnPermissionLauncher.launch(vpnIntent)
+                } else {
+                    VpnRepository.connect(context)
+                }
+            }
+            ConnectionState.DISCONNECTING -> {}
         }
     }
 
@@ -144,17 +147,17 @@ fun HomeScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(CyanAccent.copy(alpha = 0.15f))
-                            .border(1.dp, CyanAccent.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
+                            .border(1.dp, CyanAccent.copy(alpha = 0.35f), RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Shield,
-                            contentDescription = "H25 Shield",
+                            contentDescription = "TH-VPN Shield",
                             tint = CyanAccent,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(21.dp)
                         )
                     }
 
@@ -163,7 +166,7 @@ fun HomeScreen(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "H25 VPN",
+                                text = "TH-VPN",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextPrimary
@@ -172,26 +175,25 @@ fun HomeScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(DarkSurfaceVariant)
-                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    .background(EmeraldGreen.copy(alpha = 0.2f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = "v0.1.9",
-                                    fontSize = 10.sp,
+                                    text = "FREE-NET TH",
+                                    fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = TextMuted
+                                    color = EmeraldGreen
                                 )
                             }
                         }
                         Text(
-                            text = "SSH & OpenVPN Secure Tunnel",
+                            text = "Xray VLESS/WS • SSH SSL • OpenVPN",
                             fontSize = 11.sp,
                             color = TextSecondary
                         )
                     }
                 }
 
-                // Action Icons (Logs, Speed Test, Settings)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = onNavigateToLogs,
@@ -233,79 +235,105 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Session Duration & Add Time Bar
+            // Highlight Banner: Thai SIM Promo Hub & Auto Free Server Sync
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(DarkSurface)
-                    .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .border(1.dp, CyanAccent.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Time Left:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = TextMuted
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onNavigateToPromoHub)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SimCard,
+                        contentDescription = "Thai SIM Promo Hub",
+                        tint = AmberWarning,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = VpnRepository.formatDuration(remainingSeconds),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (remainingSeconds > 1800) CyanAccent else AmberWarning
-                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "โปรซิม & เน็ตฟรีไทย (กดสมัครในแอป)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "AIS Play • True เรียนฟรี/Viber • DTAC Gaming • My NT",
+                            fontSize = 10.sp,
+                            color = CyanAccent
+                        )
+                    }
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(CyanAccent.copy(alpha = 0.15f))
-                        .clickable { showAddTimeDialog = true }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                        .testTag("home_add_time_button"),
+                        .background(EmeraldGreen.copy(alpha = 0.16f))
+                        .clickable(enabled = !isSyncing) {
+                            VpnRepository.syncFreeCloudServers(silent = false)
+                            scope.launch {
+                                snackbarHostState.showSnackbar("กำลังดึงเซิร์ฟเวอร์ฟรีล่าสุดอัตโนมัติ...")
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Add Time",
-                            tint = CyanAccent,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(13.dp),
+                                strokeWidth = 2.dp,
+                                color = EmeraldGreen
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.CloudSync,
+                                contentDescription = "Sync Free Servers",
+                                tint = EmeraldGreen,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Add Time",
-                            fontSize = 12.sp,
+                            text = if (isSyncing) "ซิงค์..." else "อัปเดตโหนดฟรี",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyanAccent
+                            color = EmeraldGreen
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Big Animated Connect Button
             ConnectButton(
                 connectionState = connectionState,
-                sessionTimerText = VpnRepository.formatDuration(remainingSeconds),
+                sessionTimerText = VpnRepository.formatDuration(sessionSeconds),
                 onClick = { handleConnectClick() },
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
             // Server Selector Card
             Text(
-                text = "SERVER LOCATION",
+                text = "เซิร์ฟเวอร์ที่เชื่อมต่อ (SERVER NODE)",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextMuted,
-                letterSpacing = 1.sp,
+                letterSpacing = 0.8.sp,
                 modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
             )
             ServerCard(
@@ -317,11 +345,11 @@ fun HomeScreen(
 
             // Tweak / Payload Selector Card
             Text(
-                text = "CARRIER TWEAK / PAYLOAD",
+                text = "โปรเสริม / เน็ตฟรีค่ายมือถือไทย (CARRIER SNI & PAYLOAD)",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextMuted,
-                letterSpacing = 1.sp,
+                letterSpacing = 0.8.sp,
                 modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
             )
             TweakCard(
@@ -333,11 +361,11 @@ fun HomeScreen(
 
             // Live Network Stats & Speed Gauge
             Text(
-                text = "LIVE NETWORK TELEMETRY",
+                text = "ความเร็วรับ-ส่งข้อมูลจริง (REAL TRAFFIC TELEMETRY)",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextMuted,
-                letterSpacing = 1.sp,
+                letterSpacing = 0.8.sp,
                 modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
             )
             SpeedGauge(
@@ -347,102 +375,44 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Quick Tool Bar (Split Tunnel, Proxy Share, Ping All)
+            // Quick Tool Bar (Promo Hub, Split Tunnel, Hotspot Share, Ping All)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Split Tunnel Quick Action
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DarkSurface)
-                        .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-                        .clickable(onClick = onNavigateToSplitTunnel)
-                        .padding(12.dp)
-                        .testTag("quick_split_tunnel_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = "Split Tunnel",
-                            tint = CyanAccent,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Split Tunnel",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary
-                        )
-                    }
-                }
-
-                // Proxy Sharing Quick Action
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DarkSurface)
-                        .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-                        .clickable(onClick = onNavigateToProxyShare)
-                        .padding(12.dp)
-                        .testTag("quick_proxy_share_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Hotspot Proxy",
-                            tint = EmeraldGreen,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Hotspot Share",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary
-                        )
-                    }
-                }
-
-                // Ping All Quick Action
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DarkSurface)
-                        .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-                        .clickable {
-                            VpnRepository.pingAllServers()
-                            scope.launch {
-                                snackbarHostState.showSnackbar("Pinging all servers...")
-                            }
+                QuickActionTile(
+                    icon = Icons.Default.SimCard,
+                    title = "สมัครโปรซิม",
+                    tint = AmberWarning,
+                    onClick = onNavigateToPromoHub,
+                    modifier = Modifier.weight(1f)
+                )
+                QuickActionTile(
+                    icon = Icons.Default.Tune,
+                    title = "แยกแอป",
+                    tint = CyanAccent,
+                    onClick = onNavigateToSplitTunnel,
+                    modifier = Modifier.weight(1f)
+                )
+                QuickActionTile(
+                    icon = Icons.Default.Share,
+                    title = "ปล่อยฮอตสปอต",
+                    tint = EmeraldGreen,
+                    onClick = onNavigateToProxyShare,
+                    modifier = Modifier.weight(1f)
+                )
+                QuickActionTile(
+                    icon = Icons.Default.Assessment,
+                    title = "เช็คปิง",
+                    tint = PurpleAccent,
+                    onClick = {
+                        VpnRepository.pingAllServers()
+                        scope.launch {
+                            snackbarHostState.showSnackbar("กำลังทดสอบค่าปิงทุกเซิร์ฟเวอร์...")
                         }
-                        .padding(12.dp)
-                        .testTag("quick_ping_all_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Assessment,
-                            contentDescription = "Ping Servers",
-                            tint = PurpleAccent,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Ping Test",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary
-                        )
-                    }
-                }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -454,11 +424,43 @@ fun HomeScreen(
         )
     }
 
-    if (showAddTimeDialog) {
-        AddTimeDialog(onDismiss = { showAddTimeDialog = false })
-    }
-
     if (showSpeedTestDialog) {
         SpeedTestDialog(onDismiss = { showSpeedTestDialog = false })
+    }
+}
+
+@Composable
+private fun QuickActionTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(DarkSurface)
+            .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = tint,
+                modifier = Modifier.size(21.dp)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = title,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                maxLines = 1
+            )
+        }
     }
 }

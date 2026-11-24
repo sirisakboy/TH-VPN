@@ -79,7 +79,7 @@ fun TweaksScreen(
     var selectedCarrierFilter by remember { mutableStateOf("All") }
     var showCustomDialog by remember { mutableStateOf(false) }
 
-    val carrierFilters = listOf("All", "AIS", "DTAC", "TrueMove", "Smart", "Globe", "TNT", "Direct", "Gaming", "Custom")
+    val carrierFilters = listOf("All", "AIS", "TrueMove", "DTAC", "My NT", "Direct", "Custom")
 
     val filteredTweaks = remember(tweaks, selectedCarrierFilter) {
         if (selectedCarrierFilter == "All") {
@@ -301,10 +301,19 @@ private fun TweakListItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                if (tweak.promoHint.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "📱 ${tweak.promoHint}",
+                        fontSize = 11.sp,
+                        color = CyanAccent
+                    )
+                }
+
                 if (tweak.bugHostSni.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "SNI: ${tweak.bugHostSni}",
+                        text = "SNI / Host: ${tweak.bugHostSni}",
                         fontSize = 11.sp,
                         color = TextMuted
                     )

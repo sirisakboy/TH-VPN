@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 
 // Premium Cyber VPN Dark Theme Palette
 val DarkBg = Color(0xFF0B0F19)
+val DarkBackground = DarkBg
 val DarkSurface = Color(0xFF131B2E)
 val DarkSurfaceVariant = Color(0xFF1E293B)
 val DarkBorder = Color(0xFF334155)

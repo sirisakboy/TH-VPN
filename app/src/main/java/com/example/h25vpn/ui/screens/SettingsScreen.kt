@@ -84,7 +84,7 @@ fun SettingsScreen(
     BackHandler { onNavigateBack() }
 
     val context = LocalContext.current
-    val selectedDns by VpnRepository.selectedDns.collectAsState()
+    val selectedDns by VpnRepository.dnsMode.collectAsState()
     val mtu by VpnRepository.mtuSetting.collectAsState()
     val autoReconnect by VpnRepository.autoReconnect.collectAsState()
     val udpForwarding by VpnRepository.udpForwarding.collectAsState()
@@ -163,7 +163,7 @@ fun SettingsScreen(
             title = "Auto-Reconnect",
             subtitle = "Automatically re-establish tunnel on network change",
             checked = autoReconnect,
-            onCheckedChange = { VpnRepository.autoReconnect.value = it }
+            onCheckedChange = { VpnRepository.setAutoReconnect(it) }
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -173,7 +173,7 @@ fun SettingsScreen(
             title = "UDP Packet Forwarding",
             subtitle = "Optimized routing for gaming and VoIP protocols",
             checked = udpForwarding,
-            onCheckedChange = { VpnRepository.udpForwarding.value = it }
+            onCheckedChange = { VpnRepository.setUdpForwarding(it) }
         )
 
         Spacer(modifier = Modifier.height(20.dp))
@@ -216,8 +216,8 @@ fun SettingsScreen(
 
         SettingsClickableItem(
             icon = Icons.Default.Info,
-            title = "About H25 VPN",
-            subtitle = "Version 0.1.9 (Build 19)",
+            title = "About TH-VPN",
+            subtitle = "Version 1.0.0 (Xray + SSH/SSL + OpenVPN3)",
             onClick = { showAboutDialog = true }
         )
 
@@ -240,12 +240,12 @@ fun SettingsScreen(
             title = { Text("Select Tunnel DNS", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    DnsMode.values().forEach { mode ->
+                    DnsMode.entries.forEach { mode ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    VpnRepository.selectedDns.value = mode
+                                    VpnRepository.setDnsMode(mode)
                                     showDnsDialog = false
                                 }
                                 .padding(vertical = 8.dp),
@@ -254,7 +254,7 @@ fun SettingsScreen(
                             RadioButton(
                                 selected = selectedDns == mode,
                                 onClick = {
-                                    VpnRepository.selectedDns.value = mode
+                                    VpnRepository.setDnsMode(mode)
                                     showDnsDialog = false
                                 },
                                 colors = RadioButtonDefaults.colors(selectedColor = CyanAccent)
@@ -292,7 +292,7 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    VpnRepository.mtuSetting.value = option
+                                    VpnRepository.setMtuSetting(option)
                                     showMtuDialog = false
                                 }
                                 .padding(vertical = 8.dp),
@@ -301,7 +301,7 @@ fun SettingsScreen(
                             RadioButton(
                                 selected = mtu == option,
                                 onClick = {
-                                    VpnRepository.mtuSetting.value = option
+                                    VpnRepository.setMtuSetting(option)
                                     showMtuDialog = false
                                 },
                                 colors = RadioButtonDefaults.colors(selectedColor = CyanAccent)
@@ -325,18 +325,18 @@ fun SettingsScreen(
     if (showAboutDialog) {
         AlertDialog(
             onDismissRequest = { showAboutDialog = false },
-            title = { Text("About H25 VPN", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text("About TH-VPN", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     Text(
-                        text = "H25 VPN (2025 Edition) v0.1.9",
+                        text = "TH-VPN Free-Net & Promo Edition v1.0.0",
                         color = CyanAccent,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "A versatile SSH, OpenVPN, and TLS/SSL tunnel client engineered for unmetered high-speed connectivity, custom SNI payload injection, and Wi-Fi hotspot proxy sharing.\n\nBuilt with Android Jetpack Compose & Kotlin coroutines.",
+                        text = "แอป VPN สายฟรีเน็ตและโปรเสริมค่ายมือถือไทย (AIS, TrueMove H, DTAC, My by NT) ขับเคลื่อนด้วย Xray-core (VLESS/VMess/Trojan/Reality), SSH+SSL/WS Payload Injector, OpenVPN3 C++ และ Hotspot Proxy Share แท้",
                         color = TextSecondary,
                         fontSize = 13.sp,
                         lineHeight = 18.sp

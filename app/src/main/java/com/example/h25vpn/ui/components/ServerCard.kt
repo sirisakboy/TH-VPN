@@ -96,6 +96,12 @@ fun ServerCard(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Ping pill
+            val pingText = if (server.latencyMs <= 0) "Ready" else "${server.latencyMs} ms"
+            val pingColor = when {
+                server.latencyMs <= 0 -> EmeraldGreen
+                server.latencyMs < 120 -> EmeraldGreen
+                else -> AmberWarning
+            }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -103,10 +109,10 @@ fun ServerCard(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "${server.latencyMs} ms",
+                    text = pingText,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (server.latencyMs < 60) EmeraldGreen else AmberWarning
+                    color = pingColor
                 )
             }
 
