@@ -89,6 +89,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val selectedDns by VpnRepository.dnsMode.collectAsState()
     val mtu by VpnRepository.mtuSetting.collectAsState()
+    val autoRouteScan by VpnRepository.autoRouteScan.collectAsState()
     val autoReconnect by VpnRepository.autoReconnect.collectAsState()
     val udpForwarding by VpnRepository.udpForwarding.collectAsState()
 
@@ -197,6 +198,16 @@ fun SettingsScreen(
             title = "ขนาดแพ็กเก็ต MTU",
             subtitle = "$mtu bytes",
             onClick = { showMtuDialog = true }
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        SettingsSwitchItem(
+            icon = Icons.Default.Speed,
+            title = "ค้นหาเส้นทางอัตโนมัติ • มากกว่า 1 Mbps",
+            subtitle = "ลองเส้นทางต่างกันของชื่อโปรไฟล์เดียวกัน ใช้ดาต้าทดสอบไม่เกิน 1 MiB/เส้นทาง กดตัดการเชื่อมต่อเพื่อหยุด",
+            checked = autoRouteScan,
+            onCheckedChange = { VpnRepository.setAutoRouteScan(it) }
         )
 
         Spacer(modifier = Modifier.height(10.dp))

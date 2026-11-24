@@ -70,6 +70,9 @@ jobs:
           fi
           echo "✅ Keystore ready"
 
+      - name: 🧪 Test route identity and speed threshold
+        run: ./gradlew testDebugUnitTest --no-configuration-cache
+
       - name: 📦 Build Android APK (${{ github.event.inputs.build_type || 'release' }})
         run: |
           set -o pipefail

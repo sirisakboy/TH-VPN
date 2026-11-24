@@ -41,6 +41,7 @@ object VpnRepository {
     private const val KEY_SELECTED_TWEAK_ID = "selected_tweak_id"
     private const val KEY_DNS_MODE = "dns_mode"
     private const val KEY_KILL_SWITCH = "kill_switch"
+    private const val KEY_AUTO_ROUTE_SCAN = "auto_route_scan"
     private const val KEY_AUTO_RECONNECT = "auto_reconnect"
     private const val KEY_SPLIT_TUNNEL = "split_tunnel_enabled"
     private const val KEY_BYPASSED_PKGS = "bypassed_packages"
@@ -83,6 +84,23 @@ object VpnRepository {
 
     private val _killSwitch = MutableStateFlow(true)
     val killSwitch: StateFlow<Boolean> = _killSwitch.asStateFlow()
+
+    private val _autoRouteScan = MutableStateFlow(true)
+    val autoRouteScan: StateFlow<Boolean> = _autoRouteScan.asStateFlow()
+
+    fun setAutoRouteScan(enabled: Boolean) {
+        _autoRouteScan.value = enabled
+        prefs?.edit()?.putBoolean(KEY_AUTO_ROUTE_SCAN, enabled)?.apply()
+    }
+
+    /** Used only by the active service attempt; must not trigger a second reconnect. */
+    fun selectAttemptServer(server: VpnServer) {
+        _selectedServer.value = server
+    }
+
+    fun rememberVerifiedRoute() {
+        prefs?.edit()?.putString(KEY_SELECTED_SERVER_ID, _selectedServer.value.id)?.apply()
+    }
 
     private val _autoReconnect = MutableStateFlow(true)
     val autoReconnect: StateFlow<Boolean> = _autoReconnect.asStateFlow()
@@ -152,6 +170,7 @@ object VpnRepository {
             runCatching { DnsMode.valueOf(name) }.getOrNull()?.let { _dnsMode.value = it }
         }
         _killSwitch.value = sp.getBoolean(KEY_KILL_SWITCH, true)
+        _autoRouteScan.value = sp.getBoolean(KEY_AUTO_ROUTE_SCAN, true)
         _autoReconnect.value = sp.getBoolean(KEY_AUTO_RECONNECT, true)
         _mtuSetting.value = sp.getInt("mtu_setting", 1500)
         _udpForwarding.value = sp.getBoolean("udp_forwarding", true)
@@ -183,7 +202,7 @@ object VpnRepository {
         val seen = HashSet<String>()
         val result = mutableListOf<VpnServer>()
         for (srv in (custom + cloud + defaults)) {
-            val k = "${srv.protocol}:${srv.host}:${srv.port}:${srv.wsPath}"
+            val k = TunnelRoutes.identity(srv)
             if (seen.add(k)) {
                 result.add(srv)
             }
