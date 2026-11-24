@@ -232,6 +232,8 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        ConnectionReportsCard()
+
         // Section: Diagnostics & Battery
         SettingsSectionHeader(title = "เครื่องมือวิเคราะห์ & ระบบ (DIAGNOSTICS)")
 

@@ -14,6 +14,7 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import androidx.core.app.NotificationCompat
 import com.example.h25vpn.MainActivity
+import com.example.h25vpn.data.ConnectionReports
 import com.example.h25vpn.data.CarrierTweak
 import com.example.h25vpn.data.ConnectionState
 import com.example.h25vpn.data.LogLevel
@@ -140,6 +141,7 @@ class H25VpnService : VpnService() {
                     verifyingRoute = scan
                     repo.setEngineState(ConnectionState.CONNECTING)
                     repo.selectAttemptServer(server)
+                    ConnectionReports.record("route_attempt_started", server)
                     val label = "${index + 1}/${candidates.size} ${server.name} (${server.host}:${server.port})"
                     repo.addLog(LogLevel.INFO, "AUTO-ROUTE", "Trying $label")
                     updateNotification("Trying route ${index + 1}/${candidates.size}")
@@ -160,6 +162,7 @@ class H25VpnService : VpnService() {
                                 getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager)
                             repo.addLog(LogLevel.INFO, "AUTO-ROUTE",
                                 "Route ${index + 1}/${candidates.size}: %.2f Mbps (1 MiB HTTPS through tunnel)".format(result.mbps))
+                            ConnectionReports.record(if (result.passed) "route_probe_passed" else "route_probe_slow", server, result.mbps)
                             check(result.passed) { "Download did not exceed 1 Mbps" }
                             currentCoroutineContext().ensureActive()
                             verifyingRoute = false
@@ -173,11 +176,13 @@ class H25VpnService : VpnService() {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
+                        ConnectionReports.record("route_attempt_failed", server)
                         repo.addLog(LogLevel.WARN, "AUTO-ROUTE", "Route ${index + 1}/${candidates.size} failed: ${e.message}")
                         teardownEnginesOnly()
                         if (!scan) throw e
                     }
                 }
+                ConnectionReports.record("scan_exhausted")
                 error("Tried ${candidates.size} distinct routes; none passed >1 Mbps. Refresh/import profiles and retry.")
             } catch (e: CancellationException) {
                 // Stop/new connect owns teardown. Never let a cancelled attempt publish success/error.

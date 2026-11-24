@@ -22,12 +22,12 @@ class TunnelSpeedProbe {
         val passed get() = TunnelRoutes.passes(bytes, nanos)
     }
 
-    suspend fun measure(protocol: TunnelProtocol, connectivity: ConnectivityManager): Result {
+    suspend fun measure(protocol: TunnelProtocol?, connectivity: ConnectivityManager): Result {
         val context = currentCoroutineContext()
         context.ensureActive()
         // HTTPS certificate validation remains enabled; redirects, compression and caching are disabled.
         val url = URL("https://speed.cloudflare.com/__down?bytes=1048576&nonce=${System.nanoTime()}")
-        val openVpn = protocol == TunnelProtocol.OPENVPN_TCP || protocol == TunnelProtocol.OPENVPN_UDP
+        val openVpn = protocol == null || protocol == TunnelProtocol.OPENVPN_TCP || protocol == TunnelProtocol.OPENVPN_UDP
         val conn = if (openVpn) {
             val network = connectivity.allNetworks.firstOrNull {
                 connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true

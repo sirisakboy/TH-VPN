@@ -128,6 +128,7 @@ object VpnRepository {
         initialized = true
         val appCtx = context.applicationContext
         appContext = appCtx
+        ConnectionReports.initialize(appCtx)
         val sp = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = sp
 
@@ -323,6 +324,7 @@ object VpnRepository {
 
     fun connect(context: Context) {
         appContext = context.applicationContext
+        ConnectionReports.record("connect_requested", _selectedServer.value)
         _connectionState.value = ConnectionState.CONNECTING
         val intent = Intent(context, H25VpnService::class.java).apply {
             action = H25VpnService.ACTION_CONNECT
@@ -335,6 +337,7 @@ object VpnRepository {
     }
 
     fun disconnect(context: Context) {
+        ConnectionReports.record("disconnect_requested", _selectedServer.value)
         timerJob?.cancel()
         _connectionState.value = ConnectionState.DISCONNECTING
         addLog(LogLevel.WARN, "TUNNEL", "Stopping active VPN engine...")
@@ -365,6 +368,7 @@ object VpnRepository {
     }
 
     fun onTunnelEstablished(vpnIp: String) {
+        ConnectionReports.record("tunnel_connected", _selectedServer.value)
         _connectionState.value = ConnectionState.CONNECTED
         _sessionDurationSec.value = 0L
         val srv = _selectedServer.value
