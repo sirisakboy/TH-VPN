@@ -13,6 +13,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -30,7 +31,28 @@ import kotlinx.coroutines.withContext
 object GoogleAuthHelper {
     private const val TAG = "Auth"
 
-    fun authStateFlow(auth: FirebaseAuth = Firebase.auth): Flow<FirebaseUser?> = callbackFlow {
+    fun currentUserOrNull(context: Context? = null): FirebaseUser? {
+        return safeAuth(context)?.currentUser
+    }
+
+    private fun safeAuth(context: Context? = null): FirebaseAuth? {
+        return try {
+            if (context != null && FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+            }
+            Firebase.auth
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun authStateFlow(context: Context? = null): Flow<FirebaseUser?> = callbackFlow {
+        val auth = safeAuth(context)
+        if (auth == null) {
+            trySend(null)
+            awaitClose { }
+            return@callbackFlow
+        }
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             trySend(firebaseAuth.currentUser)
         }

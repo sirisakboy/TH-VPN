@@ -16,10 +16,13 @@ import com.example.h25vpn.MainActivity
 import com.example.h25vpn.data.CarrierTweak
 import com.example.h25vpn.data.ConnectionState
 import com.example.h25vpn.data.LogLevel
+import com.example.h25vpn.data.ScanAndReportManager
 import com.example.h25vpn.data.TunnelProtocol
 import com.example.h25vpn.data.VpnConfigParser
 import com.example.h25vpn.data.VpnRepository
 import com.example.h25vpn.data.VpnServer
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,6 +40,7 @@ class H25VpnService : VpnService() {
     companion object {
         const val ACTION_CONNECT = "com.example.h25vpn.CONNECT"
         const val ACTION_DISCONNECT = "com.example.h25vpn.DISCONNECT"
+        const val ACTION_RUN_1MBPS_SCAN = "com.example.h25vpn.RUN_1MBPS_SCAN"
         const val NOTIFICATION_ID = 1001
         const val CHANNEL_ID = "h25_vpn_channel"
         const val LOCAL_SOCKS_PORT = 10808
@@ -103,8 +107,29 @@ class H25VpnService : VpnService() {
             ACTION_DISCONNECT -> {
                 stopRealTunnel()
             }
+            ACTION_RUN_1MBPS_SCAN -> {
+                triggerServiceOneMbpsScanAndReport(
+                    proxyPort = if (v2rayPoint?.isRunning == true) LOCAL_HTTP_PORT else null
+                )
+            }
         }
         return START_STICKY
+    }
+
+    private fun triggerServiceOneMbpsScanAndReport(proxyPort: Int?) {
+        serviceScope.launch {
+            ScanAndReportManager.runOneMbpsScan(
+                servers = VpnRepository.servers.value,
+                proxyPort = proxyPort,
+                minThresholdMbps = 1.0f
+            )
+            val user = runCatching { Firebase.auth.currentUser }.getOrNull()
+            ScanAndReportManager.generateAndSaveReport(
+                context = applicationContext,
+                firebaseEmail = user?.email.orEmpty(),
+                firebaseUid = user?.uid.orEmpty()
+            )
+        }
     }
 
     private fun startRealTunnel() {
@@ -233,6 +258,9 @@ class H25VpnService : VpnService() {
             } catch (_: Throwable) {
             }
             repo.refreshPublicIpThroughTunnel(httpProxyPort = LOCAL_HTTP_PORT)
+            if (ScanAndReportManager.minSpeedScanState.value.autoScanEnabled) {
+                triggerServiceOneMbpsScanAndReport(proxyPort = LOCAL_HTTP_PORT)
+            }
         }
     }
 
@@ -275,6 +303,9 @@ class H25VpnService : VpnService() {
         startRealTrafficTelemetry(useXrayStats = false)
         serviceScope.launch {
             repo.refreshPublicIpDirect()
+            if (ScanAndReportManager.minSpeedScanState.value.autoScanEnabled) {
+                triggerServiceOneMbpsScanAndReport(proxyPort = null)
+            }
         }
     }
 
@@ -294,6 +325,9 @@ class H25VpnService : VpnService() {
                 startRealTrafficTelemetry(useXrayStats = false)
                 serviceScope.launch {
                     repo.refreshPublicIpDirect()
+                    if (ScanAndReportManager.minSpeedScanState.value.autoScanEnabled) {
+                        triggerServiceOneMbpsScanAndReport(proxyPort = null)
+                    }
                 }
             },
             onError = { errMsg ->

@@ -53,8 +53,7 @@ import com.example.h25vpn.ui.theme.DarkSurfaceVariant
 import com.example.h25vpn.ui.theme.H25VPNTheme
 import com.example.h25vpn.ui.theme.TextMuted
 import com.example.h25vpn.ui.theme.TextPrimary
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
+import androidx.compose.ui.platform.LocalContext
 
 enum class Screen {
     HOME,
@@ -86,8 +85,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppContent() {
-    val currentUser by remember { GoogleAuthHelper.authStateFlow() }
-        .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
+    val context = LocalContext.current
+    val currentUser by remember(context) { GoogleAuthHelper.authStateFlow(context) }
+        .collectAsStateWithLifecycle(initialValue = GoogleAuthHelper.currentUserOrNull(context))
 
     val user = currentUser
     if (user == null) {
