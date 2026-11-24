@@ -56,7 +56,9 @@ fun ConnectionReportsCard() {
                             ConnectionReports.updateStatus("อนุญาตแล้ว กำลังเตรียมส่งรายงาน")
                         }
                     } catch (e: UserRecoverableAuthException) {
-                        recovery.launch(e.intent)
+                        val resolution = e.intent
+                        if (resolution != null) recovery.launch(resolution)
+                        else ConnectionReports.updateStatus("Google ไม่ส่งหน้าขอสิทธิ์กลับมา กรุณาลองลงชื่อเข้าใช้อีกครั้ง")
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
