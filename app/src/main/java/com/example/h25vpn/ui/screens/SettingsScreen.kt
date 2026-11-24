@@ -89,7 +89,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     val selectedDns by VpnRepository.dnsMode.collectAsState()
     val mtu by VpnRepository.mtuSetting.collectAsState()
-    val autoRouteScan by VpnRepository.autoRouteScan.collectAsState()
     val autoReconnect by VpnRepository.autoReconnect.collectAsState()
     val udpForwarding by VpnRepository.udpForwarding.collectAsState()
 
@@ -203,16 +202,6 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         SettingsSwitchItem(
-            icon = Icons.Default.Speed,
-            title = "ค้นหาเส้นทางอัตโนมัติ • มากกว่า 1 Mbps",
-            subtitle = "ลองเส้นทางต่างกันของชื่อโปรไฟล์เดียวกัน ใช้ดาต้าทดสอบไม่เกิน 1 MiB/เส้นทาง กดตัดการเชื่อมต่อเพื่อหยุด",
-            checked = autoRouteScan,
-            onCheckedChange = { VpnRepository.setAutoRouteScan(it) }
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        SettingsSwitchItem(
             icon = Icons.Default.Refresh,
             title = "เชื่อมต่อใหม่อัตโนมัติ (Auto-Reconnect)",
             subtitle = "ต่ออุโมงค์ VPN ใหม่อัตโนมัติเมื่อสลับสัญญาณซิม/Wi-Fi",
@@ -231,8 +220,6 @@ fun SettingsScreen(
         )
 
         Spacer(modifier = Modifier.height(20.dp))
-
-        ConnectionReportsCard()
 
         // Section: Diagnostics & Battery
         SettingsSectionHeader(title = "เครื่องมือวิเคราะห์ & ระบบ (DIAGNOSTICS)")

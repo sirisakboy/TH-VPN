@@ -43,7 +43,6 @@ class SshInjectorEngine(
         val targetPort = if (tweak.overridePort > 0) tweak.overridePort else server.port
 
         val conn = Connection(targetHost, targetPort)
-        sshConnection = conn
         val proxyData = VpnProtectedInjectorProxy(
             vpnService = vpnService,
             server = server,
