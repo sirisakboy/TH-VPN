@@ -165,30 +165,31 @@ fun ConnectButton(
 
         // State Title
         val statusText = when (connectionState) {
-            ConnectionState.DISCONNECTED -> "TAP TO CONNECT"
-            ConnectionState.CONNECTING -> "CONNECTING..."
-            ConnectionState.AUTHENTICATING -> "AUTHENTICATING..."
-            ConnectionState.CONNECTED -> "CONNECTED & SECURE"
-            ConnectionState.DISCONNECTING -> "DISCONNECTING..."
-            ConnectionState.ERROR -> "CONNECTION FAILED"
+            ConnectionState.DISCONNECTED -> "แตะเพื่อเชื่อมต่อ (TAP TO CONNECT)"
+            ConnectionState.CONNECTING -> "กำลังเชื่อมต่ออุโมงค์..."
+            ConnectionState.AUTHENTICATING -> "กำลังยืนยันตัวตน & SNI..."
+            ConnectionState.CONNECTED -> "เชื่อมต่อสำเร็จ • ปลอดภัยแล้ว"
+            ConnectionState.DISCONNECTING -> "กำลังตัดการเชื่อมต่อ..."
+            ConnectionState.ERROR -> "เชื่อมต่อไม่สำเร็จ • แตะเพื่อลองใหม่"
         }
 
         Text(
             text = statusText,
             color = if (isConnected) EmeraldGreen else TextPrimary,
-            fontSize = 15.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
+            letterSpacing = 0.5.sp
         )
 
         Spacer(modifier = Modifier.height(4.dp))
 
         // Duration or Subtext
         Text(
-            text = if (isConnected) "Session: $sessionTimerText" else "Unlimited Free Bandwidth",
-            color = TextMuted,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Normal
+            text = if (isConnected) "เวลาใช้งาน: $sessionTimerText" else "SECURE • FAST • PRIVATE",
+            color = if (isConnected) CyanAccent else Color(0xFFFBBF24),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.sp
         )
     }
 }

@@ -53,7 +53,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.h25vpn.data.VpnRepository
-import com.example.h25vpn.service.ProxyTetherService
 import com.example.h25vpn.ui.theme.CyanAccent
 import com.example.h25vpn.ui.theme.DarkBg
 import com.example.h25vpn.ui.theme.DarkBorder
@@ -117,13 +116,13 @@ fun ProxyShareScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "Compartir Internet",
+                        text = "แชร์เน็ต VPN ผ่าน Wi-Fi Hotspot",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
                     Text(
-                        text = "Share VPN connection over Wi-Fi Hotspot",
+                        text = "ปล่อยเน็ตให้มือถืออีกเครื่อง คอมพิวเตอร์ หรือทีวีโดยไม่ต้องรูท",
                         fontSize = 12.sp,
                         color = TextMuted
                     )
@@ -180,7 +179,11 @@ fun ProxyShareScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (proxyState.isRunning) "Running on port ${proxyState.port}" else "Service stopped",
+                            text = if (proxyState.isRunning) {
+                                "ทำงานอยู่บน ${proxyState.localIp}:${proxyState.port} • เชื่อมต่อ ${proxyState.activeConnections} เครื่อง"
+                            } else {
+                                "ปิดอยู่ (กดสวิตช์เพื่อเปิด Proxy Server)"
+                            },
                             fontSize = 12.sp,
                             color = if (proxyState.isRunning) EmeraldGreen else TextMuted
                         )
@@ -189,12 +192,8 @@ fun ProxyShareScreen(
 
                 Switch(
                     checked = proxyState.isRunning,
-                    onCheckedChange = { isChecked ->
-                        if (isChecked) {
-                            ProxyTetherService.startProxy(context)
-                        } else {
-                            ProxyTetherService.stopProxy(context)
-                        }
+                    onCheckedChange = {
+                        VpnRepository.toggleProxyShare(context)
                     },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = DarkBg,

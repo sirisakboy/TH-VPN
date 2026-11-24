@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">H25 VPN</string>
-    <string name="app_version">0.1.9</string>
+    <string name="app_name">Arena VPN</string>
+    <string name="app_version">1.0.0</string>
     <string name="status_disconnected">Disconnected</string>
     <string name="status_connecting">Connecting...</string>
     <string name="status_authenticating">Authenticating...</string>

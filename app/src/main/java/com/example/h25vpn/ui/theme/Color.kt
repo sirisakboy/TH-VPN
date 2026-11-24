@@ -4,13 +4,17 @@ import androidx.compose.ui.graphics.Color
 
 // Premium Cyber VPN Dark Theme Palette
 val DarkBg = Color(0xFF0B0F19)
+val DarkBackground = DarkBg
 val DarkSurface = Color(0xFF131B2E)
 val DarkSurfaceVariant = Color(0xFF1E293B)
 val DarkBorder = Color(0xFF334155)
 
-// Accent Colors
+// Accent Colors (Arena VPN Cyber Teal & Gold Edition)
 val CyanAccent = Color(0xFF00E5FF)
 val CyanGlow = Color(0x3300E5FF)
+val GoldAccent = Color(0xFFFBBF24)
+val GoldDeep = Color(0xFFD97706)
+val GoldGlow = Color(0x33FBBF24)
 val EmeraldGreen = Color(0xFF10B981)
 val EmeraldGlow = Color(0x3310B981)
 val CoralRed = Color(0xFFEF4444)

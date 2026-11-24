@@ -1,216 +1,304 @@
 package com.example.h25vpn.service
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
-import android.net.wifi.WifiManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.h25vpn.MainActivity
-import com.example.h25vpn.R
+import com.example.h25vpn.data.LogLevel
 import com.example.h25vpn.data.VpnRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URI
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * Real Wi-Fi Hotspot / LAN HTTP & HTTPS CONNECT Proxy Server (`0.0.0.0:8080`).
+ * Allows other phones, tablets, Smart TVs, or PCs on the user's Hotspot to share the VPN connection
+ * without needing root access!
+ */
 class ProxyTetherService : Service() {
-
-    private var serverSocket: ServerSocket? = null
-    private var job: Job? = null
-    private val scope = CoroutineScope(Dispatchers.IO)
-    private val activeClients = AtomicInteger(0)
 
     companion object {
         const val ACTION_START = "com.example.h25vpn.START_PROXY"
         const val ACTION_STOP = "com.example.h25vpn.STOP_PROXY"
-        const val NOTIFICATION_CHANNEL_ID = "h25_proxy_channel"
-        const val NOTIFICATION_ID = 2002
-        const val PROXY_PORT = 8080
-
-        fun startProxy(context: Context) {
-            val intent = Intent(context, ProxyTetherService::class.java).apply {
-                action = ACTION_START
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-        }
-
-        fun stopProxy(context: Context) {
-            val intent = Intent(context, ProxyTetherService::class.java).apply {
-                action = ACTION_STOP
-            }
-            context.startService(intent)
-        }
+        const val NOTIFICATION_ID = 1002
+        const val CHANNEL_ID = "h25_proxy_channel"
     }
+
+    private var serverSocket: ServerSocket? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val activeClients = AtomicInteger(0)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    override fun onCreate() {
-        super.onCreate()
-        createNotificationChannel()
-    }
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> {
-                startForeground(NOTIFICATION_ID, buildNotification("Proxy Server Online on port $PROXY_PORT"))
-                startServer()
-            }
-            ACTION_STOP -> {
-                stopServer()
-            }
+            ACTION_START -> startProxyServer()
+            ACTION_STOP -> stopProxyServer()
         }
         return START_STICKY
     }
 
-    private fun startServer() {
-        if (serverSocket != null && !serverSocket!!.isClosed) return
+    private fun startProxyServer() {
+        createNotificationChannel()
+        val openAppIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
-        val wifiIp = getLocalWifiIpAddress()
-        job = scope.launch {
+        val port = VpnRepository.proxyShareState.value.port
+        val ip = VpnRepository.detectLocalHotspotIp()
+        VpnRepository.updateProxyLocalIp(ip)
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Arena VPN Hotspot Share Active")
+            .setContentText("Proxy listening on $ip:$port")
+            .setSmallIcon(android.R.drawable.ic_menu_share)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
+        serviceScope.launch {
             try {
-                serverSocket = ServerSocket(PROXY_PORT)
-                VpnRepository.updateProxyState(
-                    isRunning = true,
-                    localIp = wifiIp,
-                    port = PROXY_PORT,
-                    activeClients = 0
-                )
-                VpnRepository.appendLog("PROXY", "Hotspot Proxy Server listening on $wifiIp:$PROXY_PORT")
+                serverSocket?.close()
+                val ss = ServerSocket()
+                ss.reuseAddress = true
+                ss.bind(InetSocketAddress(InetAddress.getByName("0.0.0.0"), port))
+                serverSocket = ss
+                VpnRepository.addLog(LogLevel.SUCCESS, "HOTSPOT", "Real HTTP/HTTPS Proxy listening on $ip:$port")
 
-                while (isActive && serverSocket != null && !serverSocket!!.isClosed) {
-                    val clientSocket = serverSocket!!.accept()
+                while (isActive && serverSocket?.isClosed == false) {
+                    val client = ss.accept()
                     val count = activeClients.incrementAndGet()
-                    VpnRepository.updateProxyActiveConnections(count)
-                    scope.launch { handleClient(clientSocket) }
+                    VpnRepository.updateProxyClientCount(count)
+                    launch {
+                        handleProxyClient(client)
+                    }
                 }
             } catch (e: Exception) {
-                Log.d("ProxyTetherService", "Server socket closed: ${e.message}")
-            } finally {
-                stopServer()
-            }
-        }
-    }
-
-    private fun handleClient(client: Socket) {
-        try {
-            client.soTimeout = 15000
-            val input: InputStream = client.getInputStream()
-            val output: OutputStream = client.getOutputStream()
-
-            // Read simple HTTP request line
-            val buffer = ByteArray(2048)
-            val bytesRead = input.read(buffer)
-            if (bytesRead > 0) {
-                val reqStr = String(buffer, 0, bytesRead)
-                if (reqStr.startsWith("CONNECT")) {
-                    val okResponse = "HTTP/1.1 200 Connection Established\r\n\r\n"
-                    output.write(okResponse.toByteArray())
-                    output.flush()
-                } else {
-                    val okHtml = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 17\r\n\r\nH25 Proxy Online\n"
-                    output.write(okHtml.toByteArray())
-                    output.flush()
+                if (serverSocket?.isClosed == false) {
+                    VpnRepository.addLog(LogLevel.ERROR, "HOTSPOT", "Proxy error: ${e.message}")
                 }
             }
-        } catch (ignored: Exception) {
-        } finally {
-            try {
-                client.close()
-            } catch (ignored: Exception) {}
-            val count = activeClients.decrementAndGet().coerceAtLeast(0)
-            VpnRepository.updateProxyActiveConnections(count)
         }
     }
 
-    private fun stopServer() {
+    private fun handleProxyClient(clientSocket: Socket) {
+        var upstreamSocket: Socket? = null
+        try {
+            clientSocket.soTimeout = 30_000
+            clientSocket.tcpNoDelay = true
+            val clientIn = clientSocket.getInputStream()
+            val clientOut = clientSocket.getOutputStream()
+
+            val headerBytes = readHttpHeaderBytes(clientIn)
+            if (headerBytes.isEmpty()) return
+
+            val headerStr = String(headerBytes, Charsets.ISO_8859_1)
+            val lines = headerStr.split("\r\n")
+            val requestLine = lines.firstOrNull() ?: return
+            val parts = requestLine.split(" ")
+            if (parts.size < 2) return
+
+            val method = parts[0].uppercase()
+            val targetRaw = parts[1]
+
+            if (method == "CONNECT") {
+                val hostPort = targetRaw.split(":")
+                val targetHost = hostPort[0]
+                val targetPort = hostPort.getOrNull(1)?.toIntOrNull() ?: 443
+
+                upstreamSocket = Socket()
+                upstreamSocket.tcpNoDelay = true
+                upstreamSocket.connect(InetSocketAddress(targetHost, targetPort), 12_000)
+
+                clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray(Charsets.ISO_8859_1))
+                clientOut.flush()
+
+                relayBidirectional(clientSocket, upstreamSocket)
+            } else {
+                // Plain HTTP Proxy request (e.g. GET http://example.com/path HTTP/1.1)
+                val uri = try {
+                    URI(targetRaw)
+                } catch (_: Exception) {
+                    null
+                }
+                val hostHeader = lines.firstOrNull { it.startsWith("Host:", ignoreCase = true) }
+                    ?.substringAfter(":")?.trim() ?: ""
+                val targetHost = uri?.host ?: hostHeader.substringBefore(":")
+                if (targetHost.isBlank()) return
+                val targetPort = when {
+                    uri != null && uri.port > 0 -> uri.port
+                    hostHeader.contains(":") -> hostHeader.substringAfter(":").toIntOrNull() ?: 80
+                    else -> 80
+                }
+                val relativePath = if (uri != null) {
+                    val p = uri.rawPath.ifNullOrBlank("/")
+                    val q = uri.rawQuery
+                    if (q.isNullOrBlank()) p else "$p?$q"
+                } else {
+                    targetRaw
+                }
+
+                upstreamSocket = Socket()
+                upstreamSocket.tcpNoDelay = true
+                upstreamSocket.connect(InetSocketAddress(targetHost, targetPort), 12_000)
+
+                val rewrittenFirstLine = "$method $relativePath ${parts.getOrElse(2) { "HTTP/1.1" }}"
+                val rewrittenHeader = buildString {
+                    append(rewrittenFirstLine).append("\r\n")
+                    for (i in 1 until lines.size) {
+                        val line = lines[i]
+                        if (line.isEmpty()) continue
+                        if (line.startsWith("Proxy-Connection:", ignoreCase = true)) continue
+                        append(line).append("\r\n")
+                    }
+                    append("Connection: close\r\n\r\n")
+                }
+
+                val upOut = upstreamSocket.getOutputStream()
+                upOut.write(rewrittenHeader.toByteArray(Charsets.ISO_8859_1))
+                upOut.flush()
+
+                relayBidirectional(clientSocket, upstreamSocket)
+            }
+        } catch (_: Exception) {
+        } finally {
+            try {
+                upstreamSocket?.close()
+            } catch (_: Exception) {
+            }
+            try {
+                clientSocket.close()
+            } catch (_: Exception) {
+            }
+            val remaining = activeClients.decrementAndGet().coerceAtLeast(0)
+            VpnRepository.updateProxyClientCount(remaining)
+        }
+    }
+
+    private fun readHttpHeaderBytes(input: InputStream): ByteArray {
+        val buf = java.io.ByteArrayOutputStream(512)
+        var state = 0
+        var count = 0
+        while (count < 16_384) {
+            val b = input.read()
+            if (b == -1) break
+            buf.write(b)
+            count++
+            state = when {
+                state == 0 && b == '\r'.code -> 1
+                state == 1 && b == '\n'.code -> 2
+                state == 2 && b == '\r'.code -> 3
+                state == 3 && b == '\n'.code -> 4
+                b == '\r'.code -> 1
+                else -> 0
+            }
+            if (state == 4) break
+        }
+        return buf.toByteArray()
+    }
+
+    private fun relayBidirectional(sockA: Socket, sockB: Socket) {
+        val t1 = Thread({
+            pipeStream(sockA.getInputStream(), sockB.getOutputStream())
+            try {
+                sockB.shutdownOutput()
+            } catch (_: Exception) {
+            }
+        }, "ProxyRelay-C2S")
+
+        val t2 = Thread({
+            pipeStream(sockB.getInputStream(), sockA.getOutputStream())
+            try {
+                sockA.shutdownOutput()
+            } catch (_: Exception) {
+            }
+        }, "ProxyRelay-S2C")
+
+        t1.start()
+        t2.start()
+        try {
+            t1.join()
+            t2.join()
+        } catch (_: InterruptedException) {
+        }
+    }
+
+    private fun pipeStream(input: InputStream, output: OutputStream) {
+        try {
+            val buffer = ByteArray(16_384)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                output.write(buffer, 0, read)
+                output.flush()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun String?.ifNullOrBlank(fallback: String): String =
+        if (this.isNullOrBlank()) fallback else this
+
+    private fun stopProxyServer() {
         try {
             serverSocket?.close()
-            serverSocket = null
-        } catch (e: Exception) {
-            Log.e("ProxyTetherService", "Error stopping server", e)
+        } catch (_: Exception) {
         }
-        job?.cancel()
+        serverSocket = null
         activeClients.set(0)
-        VpnRepository.updateProxyState(isRunning = false)
-        VpnRepository.appendLog("PROXY", "Hotspot Proxy Server stopped.")
+        VpnRepository.updateProxyClientCount(0)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private fun getLocalWifiIpAddress(): String {
-        return try {
-            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val ipInt = wifiManager.connectionInfo.ipAddress
-            if (ipInt != 0) {
-                String.format(
-                    "%d.%d.%d.%d",
-                    ipInt and 0xff,
-                    ipInt shr 8 and 0xff,
-                    ipInt shr 16 and 0xff,
-                    ipInt shr 24 and 0xff
-                )
-            } else {
-                "192.168.43.1"
-            }
-        } catch (e: Exception) {
-            "192.168.43.1"
-        }
+    override fun onDestroy() {
+        stopProxyServer()
+        serviceScope.cancel()
+        super.onDestroy()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "H25 Hotspot Proxy Service",
+                CHANNEL_ID,
+                "TH-VPN Hotspot Proxy",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows Hotspot Proxy tethering status"
-                setShowBadge(false)
+                description = "Notification for active Wi-Fi Hotspot proxy sharing"
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
-    }
-
-    private fun buildNotification(statusText: String): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-            },
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("H25 Hotspot Proxy")
-            .setContentText(statusText)
-            .setSmallIcon(R.drawable.main_icon)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-    }
-
-    override fun onDestroy() {
-        stopServer()
-        super.onDestroy()
     }
 }

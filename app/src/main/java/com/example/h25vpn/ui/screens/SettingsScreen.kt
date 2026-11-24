@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,9 +61,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.h25vpn.R
 import com.example.h25vpn.data.DnsMode
 import com.example.h25vpn.data.VpnRepository
 import com.example.h25vpn.ui.theme.CyanAccent
@@ -84,7 +87,7 @@ fun SettingsScreen(
     BackHandler { onNavigateBack() }
 
     val context = LocalContext.current
-    val selectedDns by VpnRepository.selectedDns.collectAsState()
+    val selectedDns by VpnRepository.dnsMode.collectAsState()
     val mtu by VpnRepository.mtuSetting.collectAsState()
     val autoReconnect by VpnRepository.autoReconnect.collectAsState()
     val udpForwarding by VpnRepository.udpForwarding.collectAsState()
@@ -122,27 +125,67 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.width(8.dp))
             Column {
                 Text(
-                    text = "Settings & Protocols",
+                    text = "ตั้งค่าระบบ & โปรโตคอล",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Text(
-                    text = "Configure tunnel DNS, MTU, and system behavior",
+                    text = "ปรับแต่ง DNS, MTU, แบตเตอรี่ และการส่งข้อมูล",
                     fontSize = 12.sp,
                     color = TextMuted
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Arena VPN Brand Hero Banner
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(DarkSurface)
+                .border(1.dp, CyanAccent.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.main_icon),
+                contentDescription = "Arena VPN Logo",
+                modifier = Modifier
+                    .size(58.dp)
+                    .clip(RoundedCornerShape(12.dp))
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = "Arena VPN • MotorBoy Edition",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "TH-VPN Free-Net & SIM Promo Engine v1.0.0",
+                    fontSize = 12.sp,
+                    color = CyanAccent
+                )
+                Text(
+                    text = "Xray VLESS/Reality • SSH SSL • OpenVPN3",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
 
         // Section: Network & DNS
-        SettingsSectionHeader(title = "NETWORK & DNS")
+        SettingsSectionHeader(title = "เครือข่าย & DNS (NETWORK & DNS)")
 
         SettingsClickableItem(
             icon = Icons.Default.Dns,
-            title = "Custom DNS Server",
+            title = "เซิร์ฟเวอร์ DNS (DNS Resolver)",
             subtitle = selectedDns.title,
             onClick = { showDnsDialog = true }
         )
@@ -151,7 +194,7 @@ fun SettingsScreen(
 
         SettingsClickableItem(
             icon = Icons.Default.Router,
-            title = "MTU Buffer Size",
+            title = "ขนาดแพ็กเก็ต MTU",
             subtitle = "$mtu bytes",
             onClick = { showMtuDialog = true }
         )
@@ -160,31 +203,31 @@ fun SettingsScreen(
 
         SettingsSwitchItem(
             icon = Icons.Default.Refresh,
-            title = "Auto-Reconnect",
-            subtitle = "Automatically re-establish tunnel on network change",
+            title = "เชื่อมต่อใหม่อัตโนมัติ (Auto-Reconnect)",
+            subtitle = "ต่ออุโมงค์ VPN ใหม่อัตโนมัติเมื่อสลับสัญญาณซิม/Wi-Fi",
             checked = autoReconnect,
-            onCheckedChange = { VpnRepository.autoReconnect.value = it }
+            onCheckedChange = { VpnRepository.setAutoReconnect(it) }
         )
 
         Spacer(modifier = Modifier.height(10.dp))
 
         SettingsSwitchItem(
             icon = Icons.Default.Security,
-            title = "UDP Packet Forwarding",
-            subtitle = "Optimized routing for gaming and VoIP protocols",
+            title = "ส่งแพ็กเก็ต UDP (UDP Forwarding)",
+            subtitle = "เพิ่มความเสถียรสำหรับเล่นเกม RoV / FreeFire และโทรไลน์",
             checked = udpForwarding,
-            onCheckedChange = { VpnRepository.udpForwarding.value = it }
+            onCheckedChange = { VpnRepository.setUdpForwarding(it) }
         )
 
         Spacer(modifier = Modifier.height(20.dp))
 
         // Section: Diagnostics & Battery
-        SettingsSectionHeader(title = "DIAGNOSTICS & SYSTEM")
+        SettingsSectionHeader(title = "เครื่องมือวิเคราะห์ & ระบบ (DIAGNOSTICS)")
 
         SettingsClickableItem(
             icon = Icons.Default.NetworkCheck,
-            title = "Run Speed Test",
-            subtitle = "Test download/upload throughput and latency",
+            title = "ทดสอบความเร็วเน็ต (Speed Test)",
+            subtitle = "วัดความเร็ว Download / Upload และค่า Ping จริง",
             onClick = { showSpeedTestDialog = true }
         )
 
@@ -192,8 +235,8 @@ fun SettingsScreen(
 
         SettingsClickableItem(
             icon = Icons.Default.BatteryChargingFull,
-            title = "Ignore Battery Optimization",
-            subtitle = "Prevent Android OS from killing background VPN tunnel",
+            title = "ปลดล็อกประหยัดแบตเตอรี่ (กันแอปหลุด)",
+            subtitle = "ป้องกันระบบ Android ปิด VPN เองขณะปิดหน้าจอ",
             onClick = {
                 try {
                     val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
@@ -216,8 +259,8 @@ fun SettingsScreen(
 
         SettingsClickableItem(
             icon = Icons.Default.Info,
-            title = "About H25 VPN",
-            subtitle = "Version 0.1.9 (Build 19)",
+            title = "About TH-VPN",
+            subtitle = "Version 1.0.0 (Xray + SSH/SSL + OpenVPN3)",
             onClick = { showAboutDialog = true }
         )
 
@@ -240,12 +283,12 @@ fun SettingsScreen(
             title = { Text("Select Tunnel DNS", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    DnsMode.values().forEach { mode ->
+                    DnsMode.entries.forEach { mode ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    VpnRepository.selectedDns.value = mode
+                                    VpnRepository.setDnsMode(mode)
                                     showDnsDialog = false
                                 }
                                 .padding(vertical = 8.dp),
@@ -254,7 +297,7 @@ fun SettingsScreen(
                             RadioButton(
                                 selected = selectedDns == mode,
                                 onClick = {
-                                    VpnRepository.selectedDns.value = mode
+                                    VpnRepository.setDnsMode(mode)
                                     showDnsDialog = false
                                 },
                                 colors = RadioButtonDefaults.colors(selectedColor = CyanAccent)
@@ -292,7 +335,7 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    VpnRepository.mtuSetting.value = option
+                                    VpnRepository.setMtuSetting(option)
                                     showMtuDialog = false
                                 }
                                 .padding(vertical = 8.dp),
@@ -301,7 +344,7 @@ fun SettingsScreen(
                             RadioButton(
                                 selected = mtu == option,
                                 onClick = {
-                                    VpnRepository.mtuSetting.value = option
+                                    VpnRepository.setMtuSetting(option)
                                     showMtuDialog = false
                                 },
                                 colors = RadioButtonDefaults.colors(selectedColor = CyanAccent)
@@ -325,18 +368,18 @@ fun SettingsScreen(
     if (showAboutDialog) {
         AlertDialog(
             onDismissRequest = { showAboutDialog = false },
-            title = { Text("About H25 VPN", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text("About TH-VPN", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     Text(
-                        text = "H25 VPN (2025 Edition) v0.1.9",
+                        text = "TH-VPN Free-Net & Promo Edition v1.0.0",
                         color = CyanAccent,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "A versatile SSH, OpenVPN, and TLS/SSL tunnel client engineered for unmetered high-speed connectivity, custom SNI payload injection, and Wi-Fi hotspot proxy sharing.\n\nBuilt with Android Jetpack Compose & Kotlin coroutines.",
+                        text = "แอป VPN สายฟรีเน็ตและโปรเสริมค่ายมือถือไทย (AIS, TrueMove H, DTAC, My by NT) ขับเคลื่อนด้วย Xray-core (VLESS/VMess/Trojan/Reality), SSH+SSL/WS Payload Injector, OpenVPN3 C++ และ Hotspot Proxy Share แท้",
                         color = TextSecondary,
                         fontSize = 13.sp,
                         lineHeight = 18.sp

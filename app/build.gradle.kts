@@ -13,8 +13,12 @@ android {
         applicationId = "com.aistudio.h25vpn.bxtkp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 19
-        versionName = "0.1.9"
+        versionCode = 20
+        versionName = "1.0.0"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -53,8 +57,28 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     buildFeatures {
         compose = true
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            keepDebugSymbols += listOf(
+                "**/libgojni.so",
+                "**/libh1.so",
+                "**/libovpncli.so",
+                "**/libpdnsd.so",
+                "**/libtun2socks.so"
+            )
+        }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
     }
 
     lint {
@@ -64,6 +88,7 @@ android {
 }
 
 dependencies {
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

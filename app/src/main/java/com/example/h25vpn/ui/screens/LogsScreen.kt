@@ -81,7 +81,7 @@ fun LogsScreen(
     val listState = rememberLazyListState()
 
     var selectedTagFilter by remember { mutableStateOf("All") }
-    val tagFilters = listOf("All", "CONNECT", "AUTH", "CRYPTO", "TUNNEL", "PROXY", "ERROR")
+    val tagFilters = listOf("All", "TUNNEL", "XRAY", "OVPN", "SSH-INJ", "CLOUD", "PING", "SPEED", "HOTSPOT")
 
     val filteredLogs = remember(logs, selectedTagFilter) {
         if (selectedTagFilter == "All") logs
@@ -249,11 +249,9 @@ fun LogsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 val tagColor = when (entry.tag.uppercase()) {
-                                    "CONNECT" -> CyanAccent
-                                    "AUTH" -> PurpleAccent
-                                    "CRYPTO" -> EmeraldGreen
-                                    "TUNNEL" -> CyanAccent
-                                    "PROXY" -> EmeraldGreen
+                                    "TUNNEL", "XRAY", "OVPN", "SSH-INJ" -> CyanAccent
+                                    "CLOUD", "IMPORT" -> PurpleAccent
+                                    "PING", "IP", "SPEED", "HOTSPOT" -> EmeraldGreen
                                     "ERROR" -> CoralRed
                                     "WARN" -> AmberWarning
                                     else -> TextSecondary
