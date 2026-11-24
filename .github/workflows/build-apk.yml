@@ -72,12 +72,21 @@ jobs:
 
       - name: 📦 Build Android APK (${{ github.event.inputs.build_type || 'release' }})
         run: |
+          set -o pipefail
           BUILD_CHOICE="${{ github.event.inputs.build_type || 'release' }}"
           if [ "$BUILD_CHOICE" = "debug" ]; then
-            ./gradlew assembleDebug --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+            ./gradlew assembleDebug --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" 2>&1 | tee gradle_build.log
           else
-            ./gradlew assembleRelease --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+            ./gradlew assembleRelease --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" 2>&1 | tee gradle_build.log
           fi
+
+      - name: 🩺 Emit ErrorAnnotations on Failure
+        if: failure()
+        run: |
+          echo "=== GRADLE FAILURE SUMMARY ==="
+          grep -E "(^e: |error:|FAILURE:|What went wrong:|^\* |> Task .* FAILED|Caused by:)" -A 3 gradle_build.log | tail -n 80 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
 
       - name: 🏷️ Collect & Rename Output APKs
         id: package_apk
