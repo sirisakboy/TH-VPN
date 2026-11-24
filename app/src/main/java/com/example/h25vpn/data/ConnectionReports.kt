@@ -20,12 +20,12 @@ object ConnectionReports {
     private val prefs get() = app.getSharedPreferences("connection_reports", Context.MODE_PRIVATE)
     private val directory get() = File(app.noBackupFilesDir, "connection-reports").apply { mkdirs() }
 
-    fun initialize(context: Context) {
+    fun initialize(context: Context, scheduleWork: Boolean = true) {
         app = context.applicationContext
         _enabled.value = prefs.getBoolean("enabled", false)
         _sync.value = prefs.getBoolean("drive_sync", false)
         _status.value = "คิวรายงาน ${pending().size} รายการ"
-        if (_sync.value) schedule()
+        if (_sync.value && scheduleWork) schedule()
     }
 
     @Synchronized fun setEnabled(value: Boolean) {
@@ -67,7 +67,7 @@ object ConnectionReports {
         _status.value = "ลบคิวในเครื่องแล้ว (ไม่ลบไฟล์ที่ส่งขึ้น Drive ไปแล้ว)"
     }
     @Synchronized fun acknowledge(file: File) { file.delete() }
-    @Synchronized fun preview(): String = pending().takeLast(5).joinToString("\n\n") { it.readText() }
+    @Synchronized fun preview(): String = pending().sortedBy { it.lastModified() }.takeLast(5).joinToString("\n\n") { it.readText() }
         .ifBlank { "ยังไม่มีรายงาน" }
 
     private val constraints get() = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()

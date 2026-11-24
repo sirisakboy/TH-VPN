@@ -77,6 +77,7 @@ fun ConnectionReportsCard() {
         }
         if (enabled) {
             Button(onClick = {
+                ConnectionReports.setSync(false)
                 val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                     .requestScopes(Scope(DriveReportWorker.SCOPE)).build()
                 signIn.launch(GoogleSignIn.getClient(context, options).signInIntent)

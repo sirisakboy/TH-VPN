@@ -7,6 +7,8 @@ import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.UserRecoverableAuthException
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.json.JSONObject
@@ -16,10 +18,15 @@ import java.net.URLEncoder
 
 /** OAuth tokens stay in memory and are never embedded in the APK, logs, or reports. */
 class DriveReportWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    companion object { const val SCOPE = "https://www.googleapis.com/auth/drive.file" }
+    companion object {
+        const val SCOPE = "https://www.googleapis.com/auth/drive.file"
+        private val uploadMutex = Mutex()
+    }
 
-    override suspend fun doWork(): Result {
-        ConnectionReports.initialize(applicationContext)
+    override suspend fun doWork(): Result = uploadMutex.withLock { uploadReports() }
+
+    private suspend fun uploadReports(): Result {
+        ConnectionReports.initialize(applicationContext, scheduleWork = false)
         if (!ConnectionReports.sync.value || !ConnectionReports.enabled.value) return Result.success()
         val account = GoogleSignIn.getLastSignedInAccount(applicationContext)?.account
         if (account == null) {
