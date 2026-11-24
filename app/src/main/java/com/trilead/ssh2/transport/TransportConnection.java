@@ -182,7 +182,6 @@ public class TransportConnection {
         }
 
         cos.flush();
-        _upDateBytes.addBytesSent(len);
         if (log.isEnabled()) {
             log.log(90, "Sent " + Packets.getMessageName(message[off] & 0xff) + " " + len + " bytes payload");
         }
@@ -246,7 +245,6 @@ public class TransportConnection {
             log.log(90, "Received " + Packets.getMessageName(buffer[off] & 0xff) + " " + payload_length
                     + " bytes payload");
         }
-        _upDateBytes.addBytesReceived(payload_length);
         return payload_length;
     }
 }
