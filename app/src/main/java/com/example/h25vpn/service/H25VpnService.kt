@@ -49,6 +49,9 @@ class H25VpnService : VpnService() {
         private var xrayInitialized = false
         private var ovpnLoaded = false
 
+        @Volatile
+        var activeInstance: H25VpnService? = null
+
         @Synchronized
         fun ensureNativeEnginesLoaded(context: android.content.Context, onLog: (String) -> Unit) {
             if (!ovpnLoaded) {
@@ -88,7 +91,13 @@ class H25VpnService : VpnService() {
     private var connectJob: Job? = null
     private var telemetryJob: Job? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        activeInstance = this
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        activeInstance = this
         when (intent?.action) {
             ACTION_CONNECT -> {
                 createNotificationChannel()
@@ -118,16 +127,23 @@ class H25VpnService : VpnService() {
 
     private fun triggerServiceOneMbpsScanAndReport(proxyPort: Int?) {
         serviceScope.launch {
+            val activeSrvId = if (proxyPort != null) VpnRepository.selectedServer.value.id else null
             ScanAndReportManager.runOneMbpsScan(
+                context = applicationContext,
                 servers = VpnRepository.servers.value,
-                proxyPort = proxyPort,
+                activeProxyPort = proxyPort,
+                activeServerId = activeSrvId,
+                tweak = VpnRepository.selectedTweak.value,
+                dnsMode = VpnRepository.dnsMode.value,
                 minThresholdMbps = 1.0f
             )
             val user = runCatching { Firebase.auth.currentUser }.getOrNull()
             ScanAndReportManager.generateAndSaveReport(
                 context = applicationContext,
                 firebaseEmail = user?.email.orEmpty(),
-                firebaseUid = user?.uid.orEmpty()
+                firebaseUid = user?.uid.orEmpty(),
+                includeAccountDetails = false,
+                includeServerEndpoints = false
             )
         }
     }
@@ -472,6 +488,9 @@ class H25VpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        if (activeInstance === this) {
+            activeInstance = null
+        }
         teardownEnginesOnly()
         serviceScope.cancel()
         super.onDestroy()

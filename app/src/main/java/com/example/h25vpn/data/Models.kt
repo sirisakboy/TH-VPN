@@ -163,7 +163,9 @@ data class ScanNodeResult(
     val tcpPingMs: Int,
     val measuredMbps: Float,
     val passedMinSpeed: Boolean,
-    val scannedAt: String
+    val scannedAt: String,
+    val testedViaTunnel: Boolean = false,
+    val tunnelStatus: String = ""
 )
 
 @Serializable
@@ -176,13 +178,14 @@ data class MinSpeedScanState(
     val lastMeasuredMbps: Float = 0f,
     val lastScanTime: String = "",
     val autoScanEnabled: Boolean = true,
-    val statusMessage: String = "พร้อมสแกนเกณฑ์ >= 1.0 Mbps",
+    val statusMessage: String = "พร้อมสแกนผ่านอุโมงค์ทีละเส้นทาง (>= 1.0 Mbps)",
     val results: List<ScanNodeResult> = emptyList()
 )
 
 @Serializable
 data class DiagnosticReport(
     val generatedAt: String,
+    val redacted: Boolean = true,
     val packageName: String,
     val signingSha1Match: Boolean,
     val signingSha256Match: Boolean,
@@ -199,7 +202,18 @@ data class DiagnosticReport(
     val minSpeedScanThresholdMbps: Float,
     val passingOneMbpsNodes: Int,
     val totalScannedNodes: Int,
+    val nodeTunnelResults: List<ScanNodeResult> = emptyList(),
     val recentLogs: List<String>
+)
+
+@Serializable
+data class PendingDriveUpload(
+    val id: String,
+    val fileName: String,
+    val jsonContent: String,
+    val createdAt: String,
+    val retryCount: Int = 0,
+    val lastError: String = ""
 )
 
 data class ReportUiState(
@@ -211,6 +225,9 @@ data class ReportUiState(
     val driveStatusMessage: String = "ยังไม่ได้ตรวจสิทธิ์ Google Drive (แยกจากการล็อกอิน Firebase)",
     val isCheckingDrive: Boolean = false,
     val isUploadingDrive: Boolean = false,
-    val lastUploadResult: String = ""
+    val lastUploadResult: String = "",
+    val pendingQueueCount: Int = 0,
+    val pendingUploads: List<PendingDriveUpload> = emptyList(),
+    val lastQueueFlushMessage: String = ""
 )
 

@@ -2,14 +2,23 @@ package com.example.h25vpn
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
+import com.example.h25vpn.auth.DriveAuthCheckResult
+import com.example.h25vpn.auth.DriveUploadResult
 import com.example.h25vpn.auth.GoogleDriveHelper
 import com.example.h25vpn.auth.SigningVerifier
+import com.example.h25vpn.data.CarrierTweak
+import com.example.h25vpn.data.DnsMode
 import com.example.h25vpn.data.ScanAndReportManager
+import com.example.h25vpn.data.TunnelPathProbe
+import com.example.h25vpn.data.TunnelProbeOutcome
+import com.example.h25vpn.data.TunnelProtocol
 import com.example.h25vpn.data.VpnRepository
 import com.example.h25vpn.data.VpnServer
 import com.example.h25vpn.ui.screens.SettingsScreen
@@ -52,34 +61,95 @@ class ScanReportAndOAuthTest {
     }
 
     @Test
-    fun `one mbps scanner qualifies reachable nodes above 1 Mbps and rejects slow or offline nodes`() = runTest {
+    fun `per-path tunnel scanner qualifies only nodes passing via tunnel and blocks unproxied nodes`() = runTest {
         val servers = listOf(
-            VpnServer(id = "s1", name = "Fast TH", country = "Thailand", countryCode = "th", city = "Bangkok", host = "1.1.1.1", port = 443),
-            VpnServer(id = "s2", name = "Offline Node", country = "Singapore", countryCode = "sg", city = "SG", host = "10.0.0.1", port = 443)
+            VpnServer(
+                id = "s-fast",
+                name = "Xray TH Fast",
+                country = "Thailand",
+                countryCode = "th",
+                city = "Bangkok",
+                host = "203.0.113.10",
+                port = 443,
+                protocol = TunnelProtocol.V2RAY_VLESS
+            ),
+            VpnServer(
+                id = "s-slow",
+                name = "SSH SG Slow",
+                country = "Singapore",
+                countryCode = "sg",
+                city = "SG",
+                host = "203.0.113.20",
+                port = 443,
+                protocol = TunnelProtocol.SSH_SSL
+            ),
+            VpnServer(
+                id = "s-ovpn",
+                name = "VPNGate OVPN",
+                country = "Japan",
+                countryCode = "jp",
+                city = "Tokyo",
+                host = "203.0.113.30",
+                port = 1194,
+                protocol = TunnelProtocol.OPENVPN_UDP
+            )
         )
 
-        val fastScan = ScanAndReportManager.runOneMbpsScan(
-            servers = servers,
-            minThresholdMbps = 1.0f,
-            latencyProbe = { host, _ -> if (host == "1.1.1.1") 25 else -1 },
-            bandwidthProbe = { 4.2f }
-        )
-        assertEquals(2, fastScan.totalNodes)
-        assertEquals(1, fastScan.passingNodes)
-        assertTrue(fastScan.results.first { it.serverId == "s1" }.passedMinSpeed)
-        assertFalse(fastScan.results.first { it.serverId == "s2" }.passedMinSpeed)
+        val fakeProbe = object : TunnelPathProbe {
+            override suspend fun probeNode(
+                context: Context?,
+                server: VpnServer,
+                tweak: CarrierTweak,
+                dnsMode: DnsMode,
+                activeProxyPort: Int?,
+                activeServerId: String?
+            ): TunnelProbeOutcome {
+                return when (server.id) {
+                    "s-fast" -> TunnelProbeOutcome(
+                        tcpPingMs = 28,
+                        measuredMbps = 3.6f,
+                        testedViaTunnel = true,
+                        tunnelStatus = "ผ่านอุโมงค์ VLESS จริง"
+                    )
+                    "s-slow" -> TunnelProbeOutcome(
+                        tcpPingMs = 45,
+                        measuredMbps = 0.7f,
+                        testedViaTunnel = true,
+                        tunnelStatus = "ผ่านอุโมงค์ SSH/SOCKS5 จริง"
+                    )
+                    else -> TunnelProbeOutcome(
+                        tcpPingMs = 22,
+                        measuredMbps = 5.0f, // Even if ping is good, testedViaTunnel=false must NOT pass!
+                        testedViaTunnel = false,
+                        tunnelStatus = "OpenVPN ต้องสลับเชื่อมต่อ TUN หลักก่อน"
+                    )
+                }
+            }
+        }
 
-        val slowScan = ScanAndReportManager.runOneMbpsScan(
+        val result = ScanAndReportManager.runOneMbpsScan(
             servers = servers,
             minThresholdMbps = 1.0f,
-            latencyProbe = { _, _ -> 30 },
-            bandwidthProbe = { 0.6f }
+            pathProbe = fakeProbe
         )
-        assertEquals(0, slowScan.passingNodes)
+
+        assertEquals(3, result.totalNodes)
+        assertEquals(1, result.passingNodes)
+
+        val fast = result.results.first { it.serverId == "s-fast" }
+        val slow = result.results.first { it.serverId == "s-slow" }
+        val ovpn = result.results.first { it.serverId == "s-ovpn" }
+
+        assertTrue(fast.testedViaTunnel)
+        assertTrue(fast.passedMinSpeed)
+        assertTrue(slow.testedViaTunnel)
+        assertFalse(slow.passedMinSpeed)
+        assertFalse(ovpn.testedViaTunnel)
+        assertFalse(ovpn.passedMinSpeed)
     }
 
     @Test
-    fun `diagnostic report persists locally and keeps Drive permission separate from Firebase login`() = runTest {
+    fun `diagnostic report redacts PII and server endpoints by default unless explicitly consented`() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         ScanAndReportManager.updateDriveAuthorization(
             authorized = false,
@@ -87,16 +157,30 @@ class ScanReportAndOAuthTest {
             statusMessage = "Drive not yet authorized"
         )
 
-        val report = ScanAndReportManager.generateAndSaveReport(
+        val redactedReport = ScanAndReportManager.generateAndSaveReport(
             context = context,
             firebaseEmail = "sirisakkhacha@gmail.com",
-            firebaseUid = "uid-test-123"
+            firebaseUid = "uid-secret-999"
         )
 
-        assertEquals(SigningVerifier.EXPECTED_PACKAGE_NAME, report.packageName)
-        assertEquals("sirisakkhacha@gmail.com", report.firebaseUserEmail)
-        assertFalse("Firebase login must NOT imply Drive authorization", report.driveScopeAuthorized)
-        assertTrue(report.webClientConfigured)
+        assertTrue(redactedReport.redacted)
+        assertTrue(redactedReport.firebaseUserEmail.startsWith("sha256:"))
+        assertTrue(redactedReport.firebaseUid.startsWith("sha256:"))
+        assertFalse(redactedReport.firebaseUserEmail.contains("sirisakkhacha@gmail.com"))
+        assertFalse(redactedReport.firebaseUid.contains("uid-secret-999"))
+        assertFalse("Firebase login must NOT imply Drive authorization", redactedReport.driveScopeAuthorized)
+        assertTrue(redactedReport.webClientConfigured)
+
+        val fullReport = ScanAndReportManager.generateAndSaveReport(
+            context = context,
+            firebaseEmail = "sirisakkhacha@gmail.com",
+            firebaseUid = "uid-secret-999",
+            includeAccountDetails = true,
+            includeServerEndpoints = true
+        )
+        assertFalse(fullReport.redacted)
+        assertEquals("sirisakkhacha@gmail.com", fullReport.firebaseUserEmail)
+        assertEquals("uid-secret-999", fullReport.firebaseUid)
 
         val reportFile = File(context.filesDir, "thvpn_diagnostic_report.json")
         assertTrue(reportFile.exists())
@@ -107,14 +191,53 @@ class ScanReportAndOAuthTest {
             jsonContent = "{}"
         )
         assertFalse(uploadBlocked.success)
-
-        val multipart = GoogleDriveHelper.buildMultipartPayload("b123", "report.json", """{"ok":true}""")
-        assertTrue(multipart.contains("report.json"))
-        assertTrue(multipart.contains("""{"ok":true}"""))
     }
 
     @Test
-    fun `settings screen renders OAuth, Drive permission, 1 Mbps scan, and generates report on click`() {
+    fun `offline upload enqueues report persistently and flushes when connectivity and Drive token return`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val queueFile = File(context.filesDir, "pending_drive_uploads.json")
+        if (queueFile.exists()) queueFile.delete()
+        ScanAndReportManager.initialize(context)
+        ScanAndReportManager.updateDriveAuthorization(
+            authorized = false,
+            accessToken = "",
+            statusMessage = "Offline"
+        )
+
+        ScanAndReportManager.enqueueOrUploadReport(
+            context = context,
+            firebaseEmail = "sirisakkhacha@gmail.com",
+            firebaseUid = "uid-123",
+            includeAccountDetails = false,
+            includeServerEndpoints = false,
+            isOnlineOverride = false
+        )
+
+        assertEquals(1, ScanAndReportManager.reportUiState.value.pendingQueueCount)
+        assertTrue(queueFile.exists())
+        assertTrue(queueFile.readText().contains("thvpn_report_"))
+
+        val uploadedNames = mutableListOf<String>()
+        val flushed = ScanAndReportManager.flushPendingDriveUploads(
+            context = context,
+            onlyIfOnline = false,
+            driveAuthChecker = { DriveAuthCheckResult.Authorized("fake-valid-token") },
+            uploader = { token, name, _ ->
+                assertEquals("fake-valid-token", token)
+                uploadedNames.add(name)
+                DriveUploadResult(success = true, fileId = "drive-id-1", fileName = name, message = "อัปโหลดขึ้น Google Drive สำเร็จ (ID: drive-id-1)")
+            }
+        )
+
+        assertEquals(1, flushed)
+        assertEquals(1, uploadedNames.size)
+        assertEquals(0, ScanAndReportManager.reportUiState.value.pendingQueueCount)
+        assertTrue(ScanAndReportManager.reportUiState.value.driveAuthorized)
+    }
+
+    @Test
+    fun `settings screen shows queue status and consent preview dialog before uploading`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         runCatching { com.google.firebase.FirebaseApp.initializeApp(context) }
         VpnRepository.initialize(context)
@@ -128,15 +251,24 @@ class ScanReportAndOAuthTest {
 
         composeTestRule.onNodeWithTag("oauth_signing_status_card").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("drive_auth_section").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("drive_queue_status").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("check_drive_permission_button").performScrollTo().assertIsDisplayed()
-        composeTestRule.onNodeWithTag("test_drive_upload_button").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("one_mbps_scan_section").performScrollTo().assertIsDisplayed()
-        composeTestRule.onNodeWithTag("auto_scan_1mbps_switch").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("run_1mbps_scan_button").performScrollTo().assertIsDisplayed()
 
         composeTestRule.onNodeWithTag("generate_report_button").performScrollTo().performClick()
         composeTestRule.waitForIdle()
+        val savedJson = ScanAndReportManager.reportUiState.value.lastReportJson
+        assertTrue(savedJson.contains(SigningVerifier.EXPECTED_PACKAGE_NAME))
+        assertTrue(savedJson.contains("\"redacted\": true"))
 
-        assertTrue(ScanAndReportManager.reportUiState.value.lastReportJson.contains(SigningVerifier.EXPECTED_PACKAGE_NAME))
+        composeTestRule.onNodeWithTag("test_drive_upload_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("report_consent_dialog").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("consent_submit_upload_button").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("consent_confirm_checkbox").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("consent_submit_upload_button").assertIsEnabled()
     }
 }

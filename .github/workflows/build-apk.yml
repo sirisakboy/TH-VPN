@@ -73,6 +73,18 @@ jobs:
           fi
           echo "✅ Keystore ready"
 
+      - name: 🔥 Verify google-services.json
+        run: |
+          if [ ! -f "app/google-services.json" ] && [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "${{ secrets.GOOGLE_SERVICES_JSON }}" > app/google-services.json
+            echo "✅ Restored app/google-services.json from GitHub Secrets"
+          fi
+          if [ ! -f "app/google-services.json" ]; then
+            echo "::error::Missing app/google-services.json! Commit app/google-services.json or set GOOGLE_SERVICES_JSON secret."
+            exit 1
+          fi
+          echo "✅ app/google-services.json present"
+
       - name: 📦 Build Android APK (${{ github.event.inputs.build_type || 'release' }})
         run: |
           set -o pipefail

@@ -6,6 +6,7 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,11 +14,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountCircle
@@ -25,16 +29,22 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,6 +84,7 @@ import com.example.h25vpn.ui.theme.TextMuted
 import com.example.h25vpn.ui.theme.TextPrimary
 import com.example.h25vpn.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 fun SettingsOAuthAndScanSection() {
@@ -89,6 +101,7 @@ fun SettingsOAuthAndScanSection() {
 
     var isSigningIn by remember { mutableStateOf(false) }
     var authError by remember { mutableStateOf<String?>(null) }
+    var showConsentDialog by remember { mutableStateOf(false) }
 
     val driveConsentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
@@ -100,6 +113,11 @@ fun SettingsOAuthAndScanSection() {
                     accessToken = extracted.accessToken,
                     statusMessage = "อนุญาตสิทธิ์ Google Drive (drive.file) สำเร็จ"
                 )
+                if (ScanAndReportManager.reportUiState.value.pendingQueueCount > 0) {
+                    scope.launch {
+                        ScanAndReportManager.flushPendingDriveUploads(context)
+                    }
+                }
             }
             is DriveAuthCheckResult.Error -> {
                 ScanAndReportManager.updateDriveAuthorization(
@@ -268,9 +286,9 @@ fun SettingsOAuthAndScanSection() {
 
     Spacer(modifier = Modifier.height(18.dp))
 
-    // 2. Google Drive Separate Authorization & Upload Test
+    // 2. Google Drive Separate Authorization, Offline Queue & Consent Upload
     Text(
-        text = "สิทธิ์ GOOGLE DRIVE & ทดสอบอัปโหลดรายงาน",
+        text = "สิทธิ์ GOOGLE DRIVE, คิวออฟไลน์ & ส่งรายงาน",
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         color = TextMuted,
@@ -327,6 +345,61 @@ fun SettingsOAuthAndScanSection() {
             )
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(DarkBg)
+                .border(1.dp, DarkBorder.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .testTag("drive_queue_status"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "คิวรอส่งอัตโนมัติเมื่อออนไลน์: ${reportState.pendingQueueCount} ไฟล์",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (reportState.pendingQueueCount > 0) AmberWarning else TextSecondary
+                )
+                if (reportState.lastQueueFlushMessage.isNotBlank()) {
+                    Text(
+                        text = reportState.lastQueueFlushMessage,
+                        fontSize = 10.sp,
+                        color = CyanAccent
+                    )
+                }
+            }
+            if (reportState.pendingQueueCount > 0) {
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            ScanAndReportManager.flushPendingDriveUploads(context, onlyIfOnline = false)
+                        }
+                    },
+                    modifier = Modifier
+                        .height(48.dp)
+                        .testTag("flush_drive_queue_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Sync,
+                        contentDescription = "Flush Pending Queue",
+                        tint = CyanAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "ส่งคิวที่ค้างทันที",
+                        fontSize = 11.sp,
+                        color = CyanAccent,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(
@@ -344,6 +417,9 @@ fun SettingsOAuthAndScanSection() {
                                     accessToken = res.accessToken,
                                     statusMessage = "อนุญาตสิทธิ์ Google Drive (drive.file) พร้อมใช้งาน"
                                 )
+                                if (ScanAndReportManager.reportUiState.value.pendingQueueCount > 0) {
+                                    ScanAndReportManager.flushPendingDriveUploads(context)
+                                }
                             }
                             is DriveAuthCheckResult.NeedsConsent -> {
                                 ScanAndReportManager.setDriveChecking(false)
@@ -380,15 +456,7 @@ fun SettingsOAuthAndScanSection() {
             }
 
             Button(
-                onClick = {
-                    scope.launch {
-                        ScanAndReportManager.testUploadLatestReportToDrive(
-                            context = context,
-                            firebaseEmail = currentUser?.email.orEmpty(),
-                            firebaseUid = currentUser?.uid.orEmpty()
-                        )
-                    }
-                },
+                onClick = { showConsentDialog = true },
                 enabled = !reportState.isUploadingDrive,
                 colors = ButtonDefaults.buttonColors(containerColor = PurpleAccent, contentColor = TextPrimary),
                 modifier = Modifier
@@ -400,7 +468,7 @@ fun SettingsOAuthAndScanSection() {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = TextPrimary, strokeWidth = 2.dp)
                 } else {
                     Text(
-                        text = "ทดสอบอัปโหลด",
+                        text = "ตรวจข้อมูล & อัปโหลด",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -411,9 +479,9 @@ fun SettingsOAuthAndScanSection() {
 
     Spacer(modifier = Modifier.height(18.dp))
 
-    // 3. 1 Mbps Scan & Reporting System (Service + Settings)
+    // 3. Per-Path 1 Mbps Scan & Redacted Reporting System
     Text(
-        text = "ระบบสแกน 1 MBPS & รายงานผล (SERVICE + REPORT)",
+        text = "ระบบสแกนอุโมงค์ 1 MBPS ทีละโหนด & รายงาน",
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         color = TextMuted,
@@ -456,13 +524,13 @@ fun SettingsOAuthAndScanSection() {
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "สแกนเกณฑ์ >= 1.0 Mbps อัตโนมัติ",
+                        text = "สแกนผ่านอุโมงค์จริง (>= 1.0 Mbps)",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
                     Text(
-                        text = "เชื่อม H25VpnService หลังต่ออุโมงค์สำเร็จ",
+                        text = "วัดทีละโหนดผ่าน Xray/SSH proxy (ไม่ใช้เน็ตตรง)",
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
@@ -491,10 +559,70 @@ fun SettingsOAuthAndScanSection() {
         if (reportState.lastSavedPath.isNotBlank()) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "รายงานล่าสุด: ${reportState.lastGeneratedAt.ifBlank { "บันทึกแล้ว" }}",
+                text = "รายงานล่าสุด (ค่าเริ่มต้นปิดบัง PII): ${reportState.lastGeneratedAt.ifBlank { "บันทึกแล้ว" }}",
                 fontSize = 11.sp,
                 color = CyanAccent
             )
+        }
+
+        if (scanState.results.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(DarkBg)
+                    .border(1.dp, DarkBorder.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                    .padding(10.dp)
+                    .testTag("per_node_tunnel_results"),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                scanState.results.forEach { node ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = node.serverName,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = node.tunnelStatus.ifBlank {
+                                    if (node.testedViaTunnel) "ผ่านอุโมงค์จริง" else "ไม่ได้ผ่านอุโมงค์"
+                                },
+                                fontSize = 10.sp,
+                                color = if (node.testedViaTunnel) CyanAccent else TextMuted
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = if (node.testedViaTunnel) {
+                                    String.format(Locale.US, "%.2f Mbps", node.measuredMbps)
+                                } else {
+                                    "0.00 Mbps"
+                                },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = when {
+                                    node.passedMinSpeed -> EmeraldGreen
+                                    node.testedViaTunnel -> AmberWarning
+                                    else -> CoralRed
+                                }
+                            )
+                            Text(
+                                text = if (node.tcpPingMs > 0) "${node.tcpPingMs} ms" else "Offline",
+                                fontSize = 10.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -511,7 +639,7 @@ fun SettingsOAuthAndScanSection() {
                         }
                         context.startService(intent)
                     } else {
-                        ScanAndReportManager.startOneMbpsScanAsync()
+                        ScanAndReportManager.startOneMbpsScanAsync(context = context)
                     }
                 },
                 enabled = !scanState.isScanning,
@@ -533,7 +661,9 @@ fun SettingsOAuthAndScanSection() {
                     ScanAndReportManager.generateAndSaveReport(
                         context = context,
                         firebaseEmail = currentUser?.email.orEmpty(),
-                        firebaseUid = currentUser?.uid.orEmpty()
+                        firebaseUid = currentUser?.uid.orEmpty(),
+                        includeAccountDetails = false,
+                        includeServerEndpoints = false
                     )
                 },
                 modifier = Modifier
@@ -543,13 +673,198 @@ fun SettingsOAuthAndScanSection() {
             ) {
                 Icon(
                     imageVector = Icons.Default.Description,
-                    contentDescription = "Generate Report",
+                    contentDescription = "Generate Redacted Report",
                     tint = GoldAccent,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "สร้างรายงาน", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GoldAccent)
+                Text(text = "บันทึกรายงาน", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GoldAccent)
             }
         }
     }
+
+    if (showConsentDialog) {
+        ReportConsentPreviewDialog(
+            firebaseEmail = currentUser?.email.orEmpty(),
+            firebaseUid = currentUser?.uid.orEmpty(),
+            isUploading = reportState.isUploadingDrive,
+            onDismiss = { showConsentDialog = false },
+            onConfirmUpload = { includeAccount, includeEndpoints ->
+                showConsentDialog = false
+                scope.launch {
+                    ScanAndReportManager.enqueueOrUploadReport(
+                        context = context,
+                        firebaseEmail = currentUser?.email.orEmpty(),
+                        firebaseUid = currentUser?.uid.orEmpty(),
+                        includeAccountDetails = includeAccount,
+                        includeServerEndpoints = includeEndpoints
+                    )
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ReportConsentPreviewDialog(
+    firebaseEmail: String,
+    firebaseUid: String,
+    isUploading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirmUpload: (includeAccountDetails: Boolean, includeServerEndpoints: Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    var includeAccountDetails by remember { mutableStateOf(false) }
+    var includeServerEndpoints by remember { mutableStateOf(false) }
+    var consentChecked by remember { mutableStateOf(false) }
+
+    val previewJson = remember(firebaseEmail, firebaseUid, includeAccountDetails, includeServerEndpoints) {
+        ScanAndReportManager.buildPreviewReportJson(
+            context = context,
+            firebaseEmail = firebaseEmail,
+            firebaseUid = firebaseUid,
+            includeAccountDetails = includeAccountDetails,
+            includeServerEndpoints = includeServerEndpoints
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = DarkSurface,
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary,
+        modifier = Modifier.testTag("report_consent_dialog"),
+        icon = {
+            Icon(
+                imageVector = Icons.Default.PrivacyTip,
+                contentDescription = "Report Privacy Review",
+                tint = CyanAccent
+            )
+        },
+        title = {
+            Text(
+                text = "ตรวจสอบข้อมูลและความยินยอมก่อนส่ง",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "ค่าเริ่มต้นจะปิดบังอีเมล, UID และ Host/Port ด้วยแฮช SHA-256 สามารถเลือกเปิดเผยเฉพาะส่วนที่ต้องการได้ด้านล่าง:",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "แนบอีเมลและ UID จริง",
+                        fontSize = 12.sp,
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = includeAccountDetails,
+                        onCheckedChange = { includeAccountDetails = it },
+                        modifier = Modifier.testTag("include_account_details_switch"),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = DarkBg,
+                            checkedTrackColor = CyanAccent
+                        )
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "แนบ Host / Port เซิร์ฟเวอร์จริง",
+                        fontSize = 12.sp,
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = includeServerEndpoints,
+                        onCheckedChange = { includeServerEndpoints = it },
+                        modifier = Modifier.testTag("include_server_endpoints_switch"),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = DarkBg,
+                            checkedTrackColor = CyanAccent
+                        )
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(110.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DarkBg)
+                        .border(1.dp, DarkBorder, RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = previewJson,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextPrimary
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { consentChecked = !consentChecked }
+                        .testTag("consent_confirm_checkbox"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = consentChecked,
+                        onCheckedChange = null,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = CyanAccent,
+                            checkmarkColor = DarkBg
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "ฉันได้ตรวจสอบตัวอย่างรายงาน JSON และยินยอมให้อัปโหลด",
+                        fontSize = 12.sp,
+                        color = TextPrimary
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirmUpload(includeAccountDetails, includeServerEndpoints) },
+                enabled = consentChecked && !isUploading,
+                colors = ButtonDefaults.buttonColors(containerColor = PurpleAccent, contentColor = TextPrimary),
+                modifier = Modifier
+                    .height(48.dp)
+                    .testTag("consent_submit_upload_button")
+            ) {
+                Text("ยืนยันส่งเข้า Drive / คิว")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text("ยกเลิก", color = TextSecondary)
+            }
+        }
+    )
 }
