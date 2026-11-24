@@ -7,7 +7,6 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.example.h25vpn.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -30,6 +29,11 @@ import kotlinx.coroutines.withContext
 
 object GoogleAuthHelper {
     private const val TAG = "Auth"
+
+    fun webClientId(context: Context): String {
+        val id = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+        return if (id == 0) "" else context.getString(id).trim()
+    }
 
     fun currentUserOrNull(context: Context? = null): FirebaseUser? {
         return safeAuth(context)?.currentUser
@@ -67,13 +71,17 @@ object GoogleAuthHelper {
         onAuthSuccess: () -> Unit = {},
         onUnauthenticated: () -> Unit = {}
     ) {
-        if (Firebase.auth.currentUser != null) {
+        if (safeAuth(context)?.currentUser != null) {
             onAuthSuccess()
             return
         }
         val clientId = try {
-            context.getString(R.string.default_web_client_id)
+            webClientId(context)
         } catch (_: Exception) {
+            onUnauthenticated()
+            return
+        }
+        if (clientId.isBlank() || safeAuth(context) == null) {
             onUnauthenticated()
             return
         }
@@ -115,9 +123,13 @@ object GoogleAuthHelper {
         onAuthCancelled: () -> Unit = {}
     ) {
         val clientId = try {
-            context.getString(R.string.default_web_client_id)
+            webClientId(context)
         } catch (_: Exception) {
             onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
+            return
+        }
+        if (clientId.isBlank() || safeAuth(context) == null) {
+            onAuthError("Configure Firebase / Google OAuth before signing in; VPN can be used without sign-in")
             return
         }
         val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
@@ -161,7 +173,7 @@ object GoogleAuthHelper {
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to clear credential state: ${e.message}")
                 } finally {
-                    Firebase.auth.signOut()
+                    safeAuth()?.signOut()
                     onSignOutComplete()
                 }
             }

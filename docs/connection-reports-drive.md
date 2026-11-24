@@ -13,7 +13,7 @@ Immutable JSON files are queued in app-private no-backup storage, capped at 200 
 1. Use a Google Cloud project you control. Enable **Google Drive API**.
 2. Configure the OAuth consent screen, request `https://www.googleapis.com/auth/drive.file`, and add test users while the app is in testing.
 3. Register an **Android OAuth client** for package `com.aistudio.h25vpn.bxtkp` with the SHA-1 of the actual APK signing certificate. No client secret belongs in an Android app or in chat.
-4. **Use a stable signing key.** The existing CI workflow generates a new debug keystore on a fresh runner. A regenerated signing certificate changes SHA-1, so an OAuth client registered for one APK will not automatically work for later builds. Production signing/secure CI keystore provisioning must be completed by the project owner before promising Drive sign-in works across releases. Do not commit signing keys.
+4. **Use a stable signing key.** CI now restores permanent signing only from `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` Actions secrets. Without them, branch builds use an ephemeral development key, tagged releases fail, and automatic publication is disabled. A regenerated certificate changes SHA-1 and breaks OAuth bindings across builds. The owner must provision permanent signing before relying on OAuth across releases. Never commit signing keys.
 5. Install the correctly signed APK. Enable local reports, then tap Connect Google Drive and authorize the account on the phone. Authentication failure (often developer error/code 10 for mismatched package/SHA-1) does not lose pending reports.
 6. Connect/scan, then inspect `TH-VPN Connection Reports` in Drive. Tell the assistant the folder name in chat; with the Drive connector enabled it can search/read the uploaded JSON files. This is not unattended monitoring by the assistant.
 
@@ -28,3 +28,5 @@ External-probe reports deliberately have no route fingerprint/protocol because t
 ## Verification
 
 CI runs existing route tests plus report-schema privacy tests and builds the release APK. Phone/OAuth integration is still required: deny sign-in, enable/disable consent, offline queue then reconnect, kill/relaunch app, revoked scope/expired token, upload retry, full queue eviction, remote file visibility via Arena, and testing with a separate VPN app. Cloud uploads have not been verified until those tests are run with the owner's OAuth project and signing certificate.
+
+Firebase configuration is optional for the local VPN. Without `app/google-services.json`, the Google Services plugin is not applied and the app does not gate access on Firebase sign-in. Drive authorization remains a separate flow requiring real Android OAuth setup. See `review-completion.md` for the current review and setup checklist.

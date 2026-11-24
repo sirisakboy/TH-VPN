@@ -20,10 +20,11 @@ object ConnectionReports {
     private val prefs get() = app.getSharedPreferences("connection_reports", Context.MODE_PRIVATE)
     private val directory get() = File(app.noBackupFilesDir, "connection-reports").apply { mkdirs() }
 
-    fun initialize(context: Context, scheduleWork: Boolean = true) {
+    @Synchronized fun initialize(context: Context, scheduleWork: Boolean = true) {
         app = context.applicationContext
         _enabled.value = prefs.getBoolean("enabled", false)
         _sync.value = prefs.getBoolean("drive_sync", false)
+        directory.listFiles()?.filter { it.extension == "tmp" }?.forEach { it.delete() }
         _status.value = "คิวรายงาน ${pending().size} รายการ"
         if (_sync.value && scheduleWork) schedule()
     }
@@ -54,7 +55,13 @@ object ConnectionReports {
             val report = ReportPayload.create(event, server, mbps, salt,
                 System.currentTimeMillis(), android.os.Build.VERSION.SDK_INT)
             // Private storage; one bounded, immutable file per report; no device/account identifiers.
-            File(directory, "${report.getString("reportId")}.json").writeText(report.toString(2))
+            val target = File(directory, "${report.getString("reportId")}.json")
+            val temporary = File(directory, "${target.name}.tmp")
+            temporary.outputStream().use { output ->
+                output.write(report.toString(2).toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            check(temporary.renameTo(target)) { "Cannot commit report" }
             pending().sortedBy { it.lastModified() }.dropLast(200).forEach { it.delete() }
             _status.value = "คิวรายงาน ${pending().size} รายการ"
             if (_sync.value) enqueue()
@@ -64,6 +71,7 @@ object ConnectionReports {
     @Synchronized fun pending(): List<File> = directory.listFiles()?.filter { it.extension == "json" } ?: emptyList()
     @Synchronized fun clear() {
         pending().forEach { it.delete() }
+        File(app.filesDir, "thvpn_diagnostic_report.json").delete() // superseded local report, never upload it
         _status.value = "ลบคิวในเครื่องแล้ว (ไม่ลบไฟล์ที่ส่งขึ้น Drive ไปแล้ว)"
     }
     @Synchronized fun acknowledge(file: File) { file.delete() }

@@ -68,7 +68,6 @@ import androidx.compose.ui.unit.sp
 import com.example.h25vpn.R
 import com.example.h25vpn.data.DnsMode
 import com.example.h25vpn.data.VpnRepository
-import com.example.h25vpn.ui.components.SettingsOAuthAndScanSection
 import com.example.h25vpn.ui.theme.CyanAccent
 import com.example.h25vpn.ui.theme.DarkBg
 import com.example.h25vpn.ui.theme.DarkBorder
@@ -90,6 +89,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val selectedDns by VpnRepository.dnsMode.collectAsState()
     val mtu by VpnRepository.mtuSetting.collectAsState()
+    val autoRouteScan by VpnRepository.autoRouteScan.collectAsState()
     val autoReconnect by VpnRepository.autoReconnect.collectAsState()
     val udpForwarding by VpnRepository.udpForwarding.collectAsState()
 
@@ -181,10 +181,6 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        SettingsOAuthAndScanSection()
-
-        Spacer(modifier = Modifier.height(18.dp))
-
         // Section: Network & DNS
         SettingsSectionHeader(title = "เครือข่าย & DNS (NETWORK & DNS)")
 
@@ -202,6 +198,16 @@ fun SettingsScreen(
             title = "ขนาดแพ็กเก็ต MTU",
             subtitle = "$mtu bytes",
             onClick = { showMtuDialog = true }
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        SettingsSwitchItem(
+            icon = Icons.Default.Speed,
+            title = "ค้นหาเส้นทางอัตโนมัติ • มากกว่า 1 Mbps",
+            subtitle = "ลองเส้นทางต่างกันของชื่อโปรไฟล์เดียวกัน ใช้ดาต้าทดสอบไม่เกิน 1 MiB/เส้นทาง กดตัดการเชื่อมต่อเพื่อหยุด",
+            checked = autoRouteScan,
+            onCheckedChange = { VpnRepository.setAutoRouteScan(it) }
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -225,6 +231,8 @@ fun SettingsScreen(
         )
 
         Spacer(modifier = Modifier.height(20.dp))
+
+        ConnectionReportsCard()
 
         // Section: Diagnostics & Battery
         SettingsSectionHeader(title = "เครื่องมือวิเคราะห์ & ระบบ (DIAGNOSTICS)")

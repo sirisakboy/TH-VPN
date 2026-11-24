@@ -14,3 +14,9 @@
 # Keep Gradle Wrapper jar
 !gradle/wrapper/gradle-wrapper.jar
 .kotlin/
+
+# Credentials/configuration are supplied locally or through CI secrets, never committed.
+*.keystore
+*.keystore.base64
+*.jks
+app/google-services.json

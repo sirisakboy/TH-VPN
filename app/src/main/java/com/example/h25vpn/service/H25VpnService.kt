@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
 import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Build
@@ -13,16 +14,21 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import androidx.core.app.NotificationCompat
 import com.example.h25vpn.MainActivity
+import com.example.h25vpn.data.ConnectionReports
 import com.example.h25vpn.data.CarrierTweak
 import com.example.h25vpn.data.ConnectionState
 import com.example.h25vpn.data.LogLevel
-import com.example.h25vpn.data.ScanAndReportManager
+import com.example.h25vpn.data.RouteScanRunner
+import com.example.h25vpn.data.TunnelRoutes
 import com.example.h25vpn.data.TunnelProtocol
 import com.example.h25vpn.data.VpnConfigParser
 import com.example.h25vpn.data.VpnRepository
 import com.example.h25vpn.data.VpnServer
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,7 +46,6 @@ class H25VpnService : VpnService() {
     companion object {
         const val ACTION_CONNECT = "com.example.h25vpn.CONNECT"
         const val ACTION_DISCONNECT = "com.example.h25vpn.DISCONNECT"
-        const val ACTION_RUN_1MBPS_SCAN = "com.example.h25vpn.RUN_1MBPS_SCAN"
         const val NOTIFICATION_ID = 1001
         const val CHANNEL_ID = "h25_vpn_channel"
         const val LOCAL_SOCKS_PORT = 10808
@@ -86,6 +91,10 @@ class H25VpnService : VpnService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var connectJob: Job? = null
+    private val speedProbe = TunnelSpeedProbe()
+    @Volatile private var engineGeneration = 0
+    @Volatile private var generation = 0
+    @Volatile private var verifyingRoute = false
     private var telemetryJob: Job? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -107,73 +116,84 @@ class H25VpnService : VpnService() {
             ACTION_DISCONNECT -> {
                 stopRealTunnel()
             }
-            ACTION_RUN_1MBPS_SCAN -> {
-                triggerServiceOneMbpsScanAndReport(
-                    proxyPort = if (v2rayPoint?.isRunning == true) LOCAL_HTTP_PORT else null
-                )
-            }
         }
         return START_STICKY
     }
 
-    private fun triggerServiceOneMbpsScanAndReport(proxyPort: Int?) {
-        serviceScope.launch {
-            ScanAndReportManager.runOneMbpsScan(
-                servers = VpnRepository.servers.value,
-                proxyPort = proxyPort,
-                minThresholdMbps = 1.0f
-            )
-            val user = runCatching { Firebase.auth.currentUser }.getOrNull()
-            ScanAndReportManager.generateAndSaveReport(
-                context = applicationContext,
-                firebaseEmail = user?.email.orEmpty(),
-                firebaseUid = user?.uid.orEmpty()
-            )
-        }
-    }
-
     private fun startRealTunnel() {
-        connectJob?.cancel()
+        val run = ++generation
+        val previous = connectJob
+        previous?.cancel()
+        speedProbe.cancel()
+        val repo = VpnRepository
+        val selected = repo.selectedServer.value
+        val tweak = repo.selectedTweak.value
+        val scan = repo.autoRouteScan.value
+        val candidates = if (scan) TunnelRoutes.candidates(selected, repo.servers.value) else listOf(selected)
         connectJob = serviceScope.launch {
-            val repo = VpnRepository
-            val server = repo.selectedServer.value
-            val tweak = repo.selectedTweak.value
-
+            previous?.join()
+            if (run != generation) return@launch
             try {
-                repo.setEngineState(ConnectionState.CONNECTING)
                 Tun2SocksBridge.ensureXrayAssetsExtracted(applicationContext)
-                ensureNativeEnginesLoaded(applicationContext) { msg ->
-                    repo.addLog(LogLevel.INFO, "CORE", msg)
-                }
-
-                val spoofInfo = if (!tweak.isDirectNoTweak && tweak.bugHostSni.isNotBlank()) {
-                    " [Carrier BugHost: ${tweak.bugHostSni}]"
-                } else {
-                    " [Direct]"
-                }
-                repo.addLog(
-                    LogLevel.INFO,
-                    "TUNNEL",
-                    "Connecting ${server.name} (${server.host}:${server.port} • ${server.protocol.displayName})$spoofInfo"
-                )
-
-                when (server.protocol) {
-                    TunnelProtocol.OPENVPN_TCP, TunnelProtocol.OPENVPN_UDP -> {
-                        startOpenVpnMode(server, tweak)
+                ensureNativeEnginesLoaded(applicationContext) { repo.addLog(LogLevel.INFO, "CORE", it) }
+                val winner = RouteScanRunner.firstPassing(candidates, attempt = { server, index ->
+                    currentCoroutineContext().ensureActive()
+                    teardownEnginesOnly()
+                    verifyingRoute = scan
+                    repo.setEngineState(ConnectionState.CONNECTING)
+                    repo.selectAttemptServer(server)
+                    ConnectionReports.record("route_attempt_started", server)
+                    val label = "${index + 1}/${candidates.size} ${server.name} (${server.host}:${server.port})"
+                    repo.addLog(LogLevel.INFO, "AUTO-ROUTE", "Trying $label")
+                    updateNotification("Trying route ${index + 1}/${candidates.size}")
+                    var assignedIp = "26.26.26.1"
+                    when (server.protocol) {
+                        TunnelProtocol.OPENVPN_TCP, TunnelProtocol.OPENVPN_UDP -> {
+                            val ready = CompletableDeferred<String>()
+                            startOpenVpnMode(server, tweak, if (scan) ready else null)
+                            if (scan) assignedIp = withTimeoutOrNull(35_000) { ready.await() }
+                                ?: error("OpenVPN connection timed out")
+                        }
+                        TunnelProtocol.SSH_DIRECT, TunnelProtocol.SSH_SSL -> startSshInjectorMode(server, tweak)
+                        else -> startXrayV2RayMode(server, tweak)
                     }
-                    TunnelProtocol.SSH_DIRECT, TunnelProtocol.SSH_SSL -> {
-                        startSshInjectorMode(server, tweak)
+                    currentCoroutineContext().ensureActive()
+                    if (scan) {
+                        updateNotification("Testing route ${index + 1}/${candidates.size} • >1 Mbps")
+                        val result = speedProbe.measure(server.protocol,
+                            getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager)
+                        repo.addLog(LogLevel.INFO, "AUTO-ROUTE",
+                            "Route ${index + 1}/${candidates.size}: %.2f Mbps (1 MiB HTTPS through tunnel)".format(result.mbps))
+                        ConnectionReports.record(if (result.passed) "route_probe_passed" else "route_probe_slow", server, result.mbps)
+                        check(result.passed) { "Download did not exceed 1 Mbps" }
+                        currentCoroutineContext().ensureActive()
+                        verifyingRoute = false
+                        repo.onTunnelEstablished(assignedIp)
+                        repo.rememberVerifiedRoute()
+                        updateNotification("Verified >1 Mbps: ${server.name}")
+                        startRealTrafficTelemetry(useXrayStats = v2rayPoint != null)
+                        repo.addLog(LogLevel.SUCCESS, "AUTO-ROUTE", "Verified route ${index + 1}/${candidates.size}; keeping this tunnel")
                     }
-                    else -> {
-                        startXrayV2RayMode(server, tweak)
-                    }
-                }
+                }, failed = { server, index, e ->
+                    ConnectionReports.record("route_attempt_failed", server)
+                    repo.addLog(LogLevel.WARN, "AUTO-ROUTE", "Route ${index + 1}/${candidates.size} failed: ${e.message}")
+                    teardownEnginesOnly()
+                    if (!scan) throw e
+                })
+                if (winner != null) return@launch
+                ConnectionReports.record("scan_exhausted")
+                error("Tried ${candidates.size} distinct routes; none passed >1 Mbps. Refresh/import profiles and retry.")
+            } catch (e: CancellationException) {
+                // Stop/new connect owns teardown. Never let a cancelled attempt publish success/error.
+                throw e
             } catch (e: Throwable) {
-                repo.addLog(LogLevel.ERROR, "TUNNEL", "Connection failed: ${e.message ?: e.javaClass.simpleName}")
-                teardownEnginesOnly()
-                repo.setEngineState(ConnectionState.ERROR)
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                if (run == generation) {
+                    repo.addLog(LogLevel.ERROR, "TUNNEL", e.message ?: "Connection failed")
+                    teardownEnginesOnly()
+                    repo.setEngineState(ConnectionState.ERROR)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
             }
         }
     }
@@ -244,6 +264,8 @@ class H25VpnService : VpnService() {
         tun2SocksBridge = bridge
 
         // Measure real tunnel round-trip delay via Xray-core
+        currentCoroutineContext().ensureActive()
+        if (verifyingRoute) return
         repo.onTunnelEstablished(vpnIp = "26.26.26.1")
         updateNotification("Connected: ${server.name} (${tweak.carrier})")
         startRealTrafficTelemetry(useXrayStats = true)
@@ -258,13 +280,10 @@ class H25VpnService : VpnService() {
             } catch (_: Throwable) {
             }
             repo.refreshPublicIpThroughTunnel(httpProxyPort = LOCAL_HTTP_PORT)
-            if (ScanAndReportManager.minSpeedScanState.value.autoScanEnabled) {
-                triggerServiceOneMbpsScanAndReport(proxyPort = LOCAL_HTTP_PORT)
-            }
         }
     }
 
-    private fun startSshInjectorMode(server: VpnServer, tweak: CarrierTweak) {
+    private suspend fun startSshInjectorMode(server: VpnServer, tweak: CarrierTweak) {
         val repo = VpnRepository
         teardownEnginesOnly()
         repo.setEngineState(ConnectionState.AUTHENTICATING)
@@ -272,6 +291,7 @@ class H25VpnService : VpnService() {
         val engine = SshInjectorEngine(this) { msg ->
             repo.addLog(LogLevel.INFO, "SSH-INJ", msg)
         }
+        sshEngine = engine
         engine.connectAndStartSocks(
             server = server,
             tweak = tweak,
@@ -298,41 +318,48 @@ class H25VpnService : VpnService() {
         }
         tun2SocksBridge = bridge
 
+        currentCoroutineContext().ensureActive()
+        if (verifyingRoute) return
         repo.onTunnelEstablished(vpnIp = "26.26.26.1")
         updateNotification("Connected SSH: ${server.name}")
         startRealTrafficTelemetry(useXrayStats = false)
         serviceScope.launch {
             repo.refreshPublicIpDirect()
-            if (ScanAndReportManager.minSpeedScanState.value.autoScanEnabled) {
-                triggerServiceOneMbpsScanAndReport(proxyPort = null)
-            }
         }
     }
 
-    private fun startOpenVpnMode(server: VpnServer, tweak: CarrierTweak) {
+    private fun startOpenVpnMode(server: VpnServer, tweak: CarrierTweak, ready: CompletableDeferred<String>? = null) {
         val repo = VpnRepository
         teardownEnginesOnly()
         repo.setEngineState(ConnectionState.AUTHENTICATING)
 
+        val epoch = engineGeneration
         val ovpn = OpenVpnEngine(
             vpnService = this,
             splitTunnelEnabled = repo.splitTunnelEnabled.value,
             bypassedPackages = repo.bypassedPackages.value,
             dnsMode = repo.dnsMode.value,
             onConnected = { assignedIp ->
-                repo.onTunnelEstablished(vpnIp = assignedIp)
-                updateNotification("Connected OpenVPN: ${server.name}")
-                startRealTrafficTelemetry(useXrayStats = false)
-                serviceScope.launch {
-                    repo.refreshPublicIpDirect()
-                    if (ScanAndReportManager.minSpeedScanState.value.autoScanEnabled) {
-                        triggerServiceOneMbpsScanAndReport(proxyPort = null)
+                if (epoch == engineGeneration) {
+                    if (ready != null) {
+                        ready.complete(assignedIp)
+                    } else {
+                        repo.onTunnelEstablished(vpnIp = assignedIp)
+                        updateNotification("Connected OpenVPN: ${server.name}")
+                        startRealTrafficTelemetry(useXrayStats = false)
+                        serviceScope.launch { repo.refreshPublicIpDirect() }
                     }
                 }
             },
             onError = { errMsg ->
-                repo.addLog(LogLevel.ERROR, "OVPN", errMsg)
-                stopRealTunnel(markError = true)
+                if (epoch == engineGeneration) {
+                    repo.addLog(LogLevel.ERROR, "OVPN", errMsg)
+                    if (ready != null && !ready.isCompleted) {
+                        ready.completeExceptionally(IllegalStateException(errMsg))
+                    } else if (!verifyingRoute) {
+                        stopRealTunnel(markError = true)
+                    }
+                }
             },
             onLog = { msg ->
                 repo.addLog(LogLevel.INFO, "OVPN", msg)
@@ -417,6 +444,7 @@ class H25VpnService : VpnService() {
     }
 
     private fun teardownEnginesOnly() {
+        engineGeneration++
         telemetryJob?.cancel()
         telemetryJob = null
 
@@ -454,15 +482,23 @@ class H25VpnService : VpnService() {
     }
 
     private fun stopRealTunnel(markError: Boolean = false) {
-        connectJob?.cancel()
-        teardownEnginesOnly()
-        if (markError) {
-            VpnRepository.setEngineState(ConnectionState.ERROR)
-        } else {
-            VpnRepository.onTunnelDisconnected()
+        val run = ++generation
+        val previous = connectJob
+        previous?.cancel()
+        speedProbe.cancel()
+        sshEngine?.stop()
+        serviceScope.launch {
+            previous?.join()
+            if (run != generation) return@launch
+            teardownEnginesOnly()
+            if (markError) {
+                VpnRepository.setEngineState(ConnectionState.ERROR)
+            } else {
+                VpnRepository.onTunnelDisconnected()
+            }
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     override fun onRevoke() {
@@ -472,6 +508,9 @@ class H25VpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        generation++
+        speedProbe.cancel()
+        connectJob?.cancel()
         teardownEnginesOnly()
         serviceScope.cancel()
         super.onDestroy()

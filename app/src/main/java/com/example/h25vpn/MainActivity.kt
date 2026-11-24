@@ -10,6 +10,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -25,8 +27,12 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -85,15 +91,23 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppContent() {
+    if (!BuildConfig.FIREBASE_CONFIGURED) {
+        MainAppNavHost()
+        return
+    }
     val context = LocalContext.current
     val currentUser by remember(context) { GoogleAuthHelper.authStateFlow(context) }
         .collectAsStateWithLifecycle(initialValue = GoogleAuthHelper.currentUserOrNull(context))
 
+    var guest by rememberSaveable { mutableStateOf(false) }
     val user = currentUser
-    if (user == null) {
-        AuthScreen(onAuthSuccess = {})
+    if (user == null && !guest) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) { AuthScreen(onAuthSuccess = {}) }
+            TextButton(onClick = { guest = true }) { Text("ใช้ VPN โดยไม่เข้าสู่ระบบ (ไม่เปิดการส่งรายงานอัตโนมัติ)") }
+        }
     } else {
-        key(user.uid) {
+        key(user?.uid ?: "guest") {
             MainAppNavHost()
         }
     }

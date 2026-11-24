@@ -3,7 +3,7 @@ package com.example.h25vpn.auth
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import com.example.h25vpn.R
+import com.example.h25vpn.BuildConfig
 import java.security.MessageDigest
 
 data class SigningVerificationResult(
@@ -24,9 +24,8 @@ data class SigningVerificationResult(
 
 object SigningVerifier {
     const val EXPECTED_PACKAGE_NAME = "com.aistudio.h25vpn.bxtkp"
-    const val EXPECTED_SHA1 = "0E:80:C6:7B:78:D2:A5:AB:A4:3C:61:7D:65:5C:BD:D4:89:9F:0F:22"
-    const val EXPECTED_SHA256 =
-        "A7:E5:7A:B1:E4:47:87:41:9C:7E:06:F8:BF:FA:17:DC:E9:50:E4:76:4D:3D:21:1C:42:D6:E4:94:D8:C5:10:44"
+    val EXPECTED_SHA1 = BuildConfig.OAUTH_SIGNING_SHA1
+    val EXPECTED_SHA256 = BuildConfig.OAUTH_SIGNING_SHA256
 
     @Suppress("DEPRECATION")
     fun verifyApkOAuthBinding(context: Context): SigningVerificationResult {
@@ -58,7 +57,7 @@ object SigningVerifier {
         }
 
         val webClientConfigured = try {
-            val clientId = context.getString(R.string.default_web_client_id).trim()
+            val clientId = GoogleAuthHelper.webClientId(context)
             clientId.isNotBlank() && clientId.contains("-")
         } catch (_: Exception) {
             false
@@ -72,8 +71,8 @@ object SigningVerifier {
             expectedSha1 = EXPECTED_SHA1,
             expectedSha256 = EXPECTED_SHA256,
             isPackageMatch = pkgName == EXPECTED_PACKAGE_NAME,
-            isSha1Match = sha1.equals(EXPECTED_SHA1, ignoreCase = true),
-            isSha256Match = sha256.equals(EXPECTED_SHA256, ignoreCase = true),
+            isSha1Match = EXPECTED_SHA1.isNotBlank() && sha1.equals(EXPECTED_SHA1, ignoreCase = true),
+            isSha256Match = EXPECTED_SHA256.isNotBlank() && sha256.equals(EXPECTED_SHA256, ignoreCase = true),
             isWebClientConfigured = webClientConfigured
         )
     }
