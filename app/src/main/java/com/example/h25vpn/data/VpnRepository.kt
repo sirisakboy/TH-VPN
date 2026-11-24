@@ -165,6 +165,7 @@ object VpnRepository {
         _customSubscriptionUrls.value = sp.getStringSet(KEY_CUSTOM_SUB_URLS, emptySet())?.toList() ?: emptyList()
 
         _proxyShareState.value = _proxyShareState.value.copy(localIp = detectLocalHotspotIp())
+        ScanAndReportManager.initialize(appCtx)
 
         addLog(LogLevel.INFO, "INIT", "TH-VPN Engine v1.0 Ready (Xray VLESS/VMess/Trojan + SSH/SSL + OpenVPN3)")
 

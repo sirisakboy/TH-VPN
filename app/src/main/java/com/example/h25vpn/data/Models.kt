@@ -153,3 +153,64 @@ data class AppItem(
     val appName: String,
     val isBypassed: Boolean = false
 )
+
+@Serializable
+data class ScanNodeResult(
+    val serverId: String,
+    val serverName: String,
+    val host: String,
+    val port: Int,
+    val tcpPingMs: Int,
+    val measuredMbps: Float,
+    val passedMinSpeed: Boolean,
+    val scannedAt: String
+)
+
+@Serializable
+data class MinSpeedScanState(
+    val isScanning: Boolean = false,
+    val minThresholdMbps: Float = 1.0f,
+    val totalNodes: Int = 0,
+    val scannedNodes: Int = 0,
+    val passingNodes: Int = 0,
+    val lastMeasuredMbps: Float = 0f,
+    val lastScanTime: String = "",
+    val autoScanEnabled: Boolean = true,
+    val statusMessage: String = "พร้อมสแกนเกณฑ์ >= 1.0 Mbps",
+    val results: List<ScanNodeResult> = emptyList()
+)
+
+@Serializable
+data class DiagnosticReport(
+    val generatedAt: String,
+    val packageName: String,
+    val signingSha1Match: Boolean,
+    val signingSha256Match: Boolean,
+    val webClientConfigured: Boolean,
+    val firebaseUserEmail: String,
+    val firebaseUid: String,
+    val driveScopeAuthorized: Boolean,
+    val connectionState: String,
+    val activeServer: String,
+    val activeTweak: String,
+    val pingMs: Int,
+    val downloadMbps: Float,
+    val uploadMbps: Float,
+    val minSpeedScanThresholdMbps: Float,
+    val passingOneMbpsNodes: Int,
+    val totalScannedNodes: Int,
+    val recentLogs: List<String>
+)
+
+data class ReportUiState(
+    val lastGeneratedAt: String = "",
+    val lastSavedPath: String = "",
+    val lastReportJson: String = "",
+    val driveAuthorized: Boolean = false,
+    val driveAccessToken: String = "",
+    val driveStatusMessage: String = "ยังไม่ได้ตรวจสิทธิ์ Google Drive (แยกจากการล็อกอิน Firebase)",
+    val isCheckingDrive: Boolean = false,
+    val isUploadingDrive: Boolean = false,
+    val lastUploadResult: String = ""
+)
+

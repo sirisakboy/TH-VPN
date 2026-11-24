@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import com.example.h25vpn.R
 import com.example.h25vpn.data.DnsMode
 import com.example.h25vpn.data.VpnRepository
+import com.example.h25vpn.ui.components.SettingsOAuthAndScanSection
 import com.example.h25vpn.ui.theme.CyanAccent
 import com.example.h25vpn.ui.theme.DarkBg
 import com.example.h25vpn.ui.theme.DarkBorder
@@ -177,6 +178,10 @@ fun SettingsScreen(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        SettingsOAuthAndScanSection()
 
         Spacer(modifier = Modifier.height(18.dp))
 
