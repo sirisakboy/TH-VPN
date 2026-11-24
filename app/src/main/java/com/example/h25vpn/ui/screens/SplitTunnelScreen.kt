@@ -1,6 +1,8 @@
 package com.example.h25vpn.ui.screens
 
-import androidx.activity.compose.BackHandler
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,14 +23,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -37,6 +36,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,160 +46,150 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.h25vpn.data.AppItem
 import com.example.h25vpn.data.VpnRepository
 import com.example.h25vpn.ui.theme.CyanAccent
-import com.example.h25vpn.ui.theme.DarkBg
+import com.example.h25vpn.ui.theme.DarkBackground
 import com.example.h25vpn.ui.theme.DarkBorder
 import com.example.h25vpn.ui.theme.DarkSurface
-import com.example.h25vpn.ui.theme.DarkSurfaceVariant
+import com.example.h25vpn.ui.theme.EmeraldGreen
 import com.example.h25vpn.ui.theme.TextMuted
 import com.example.h25vpn.ui.theme.TextPrimary
 import com.example.h25vpn.ui.theme.TextSecondary
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SplitTunnelScreen(
-    onNavigateBack: () -> Unit,
-    modifier: Modifier = Modifier
+    onBack: () -> Unit
 ) {
-    BackHandler { onNavigateBack() }
-
-    val isSplitTunnelEnabled by VpnRepository.splitTunnelEnabled.collectAsState()
+    val context = LocalContext.current
+    val splitEnabled by VpnRepository.splitTunnelEnabled.collectAsState()
     val bypassedPackages by VpnRepository.bypassedPackages.collectAsState()
-
     var searchQuery by remember { mutableStateOf("") }
+    var installedApps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    // Curated apps list
-    val appsList = remember {
-        listOf(
-            AppItem("com.android.chrome", "Google Chrome"),
-            AppItem("com.google.android.youtube", "YouTube"),
-            AppItem("com.netflix.mediaclient", "Netflix"),
-            AppItem("com.zhiliaoapp.musically", "TikTok"),
-            AppItem("com.mobile.legends", "Mobile Legends: Bang Bang"),
-            AppItem("com.tencent.ig", "PUBG Mobile"),
-            AppItem("com.garena.game.kgth", "Garena RoV: Arena of Valor"),
-            AppItem("com.scb.phone", "SCB EASY (Banking)"),
-            AppItem("com.kasikorn.retail.mbanking.wap", "K PLUS (Banking)"),
-            AppItem("th.co.truemoney.wallet", "TrueMoney Wallet"),
-            AppItem("com.shopee.th", "Shopee"),
-            AppItem("com.lazada.android", "Lazada"),
-            AppItem("org.telegram.messenger", "Telegram"),
-            AppItem("com.whatsapp", "WhatsApp")
-        )
+    LaunchedEffect(Unit) {
+        installedApps = withContext(Dispatchers.IO) {
+            val pm = context.packageManager
+            val launcherIntent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+            val launchablePkgs = pm.queryIntentActivities(launcherIntent, 0)
+                .mapNotNull { it.activityInfo?.packageName }
+                .toSet()
+
+            val allPkgs = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            allPkgs
+                .filter { appInfo ->
+                    appInfo.packageName != context.packageName &&
+                        ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || appInfo.packageName in launchablePkgs)
+                }
+                .map { appInfo ->
+                    AppItem(
+                        packageName = appInfo.packageName,
+                        appName = pm.getApplicationLabel(appInfo).toString()
+                    )
+                }
+                .distinctBy { it.packageName }
+                .sortedBy { it.appName.lowercase() }
+        }
+        isLoading = false
     }
 
-    val filteredApps = remember(searchQuery, appsList) {
-        if (searchQuery.isBlank()) appsList
-        else appsList.filter {
-            it.appName.contains(searchQuery, ignoreCase = true) ||
-                    it.packageName.contains(searchQuery, ignoreCase = true)
-        }
+    val filteredApps = installedApps.filter {
+        it.appName.contains(searchQuery, ignoreCase = true) ||
+            it.packageName.contains(searchQuery, ignoreCase = true)
     }
 
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(DarkBg)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .background(DarkBackground)
+            .padding(horizontal = 20.dp)
     ) {
-        // Top Bar
+        Spacer(modifier = Modifier.height(12.dp))
+
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
-                onClick = onNavigateBack,
-                modifier = Modifier.size(36.dp).testTag("split_tunnel_back_button")
-            ) {
+            IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
                     tint = TextPrimary
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Column {
                 Text(
-                    text = "Split Tunneling",
-                    fontSize = 18.sp,
+                    text = "แยกแอปไม่ผ่าน VPN (Split Tunnel)",
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Text(
-                    text = "Bypass specific apps from VPN routing",
+                    text = "เหมาะสำหรับแยกแอปธนาคาร (K PLUS / SCB / เป๋าตัง) ออกจากการมุด IP",
                     fontSize = 12.sp,
-                    color = TextMuted
+                    color = TextSecondary
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Master Switch Card
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(DarkSurface)
-                .border(1.dp, if (isSplitTunnelEnabled) CyanAccent else DarkBorder, RoundedCornerShape(14.dp))
+                .border(1.dp, DarkBorder, RoundedCornerShape(14.dp))
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Enable Split Tunneling",
+                    text = "เปิดใช้งาน Split Tunneling",
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = TextPrimary
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = if (isSplitTunnelEnabled) "${bypassedPackages.size} apps will bypass VPN" else "All traffic goes through VPN",
+                    text = if (splitEnabled) {
+                        "ข้าม VPN ${bypassedPackages.size} แอปที่เลือก (มีผลเมื่อเชื่อมต่อใหม่)"
+                    } else {
+                        "แอปทั้งหมดวิ่งผ่านอุโมงค์ TH-VPN"
+                    },
                     fontSize = 12.sp,
-                    color = if (isSplitTunnelEnabled) CyanAccent else TextMuted
+                    color = if (splitEnabled) EmeraldGreen else TextMuted
                 )
             }
 
             Switch(
-                checked = isSplitTunnelEnabled,
-                onCheckedChange = { VpnRepository.splitTunnelEnabled.value = it },
+                checked = splitEnabled,
+                onCheckedChange = { VpnRepository.setSplitTunnelEnabled(it) },
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = DarkBg,
-                    checkedTrackColor = CyanAccent,
-                    uncheckedThumbColor = TextMuted,
-                    uncheckedTrackColor = DarkSurfaceVariant
-                ),
-                modifier = Modifier.testTag("split_tunnel_master_switch")
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = CyanAccent
+                )
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Search Bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Filter apps...", color = TextMuted, fontSize = 14.sp) },
-            leadingIcon = {
-                Icon(imageVector = Icons.Default.Search, contentDescription = "Search", tint = TextMuted, modifier = Modifier.size(20.dp))
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(imageVector = Icons.Default.Clear, contentDescription = "Clear", tint = TextMuted, modifier = Modifier.size(18.dp))
-                    }
-                }
-            },
-            singleLine = true,
+            placeholder = { Text("ค้นหาแอปในเครื่อง...", color = TextMuted, fontSize = 13.sp) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted) },
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
+            singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = DarkSurface,
                 unfocusedContainerColor = DarkSurface,
@@ -207,95 +197,89 @@ fun SplitTunnelScreen(
                 unfocusedBorderColor = DarkBorder,
                 focusedTextColor = TextPrimary,
                 unfocusedTextColor = TextPrimary
-            ),
-            modifier = Modifier.fillMaxWidth().testTag("app_search_field")
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // App List
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            items(filteredApps, key = { it.packageName }) { app ->
-                val isBypassed = bypassedPackages.contains(app.packageName)
-                AppListItem(
-                    app = app,
-                    isBypassed = isBypassed,
-                    isEnabled = isSplitTunnelEnabled,
-                    onToggle = { VpnRepository.toggleAppBypass(app.packageName) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppListItem(
-    app: AppItem,
-    isBypassed: Boolean,
-    isEnabled: Boolean,
-    onToggle: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(DarkSurface)
-            .border(1.dp, if (isBypassed && isEnabled) CyanAccent.copy(alpha = 0.5f) else DarkBorder, RoundedCornerShape(12.dp))
-            .clickable(enabled = isEnabled, onClick = onToggle)
-            .padding(14.dp)
-            .testTag("split_app_item_${app.packageName}"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(DarkSurfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Apps,
-                    contentDescription = app.appName,
-                    tint = if (isBypassed && isEnabled) CyanAccent else TextMuted,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column {
-                Text(
-                    text = app.appName,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (isEnabled) TextPrimary else TextMuted
-                )
-                Text(
-                    text = app.packageName,
-                    fontSize = 11.sp,
-                    color = TextMuted
-                )
-            }
-        }
-
-        Checkbox(
-            checked = isBypassed,
-            onCheckedChange = { onToggle() },
-            enabled = isEnabled,
-            colors = CheckboxDefaults.colors(
-                checkedColor = CyanAccent,
-                checkmarkColor = DarkBg,
-                uncheckedColor = DarkBorder
             )
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = CyanAccent)
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(filteredApps, key = { it.packageName }) { app ->
+                    val isBypassed = bypassedPackages.contains(app.packageName)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(DarkSurface)
+                            .border(
+                                1.dp,
+                                if (isBypassed && splitEnabled) CyanAccent else DarkBorder,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .clickable(enabled = splitEnabled) {
+                                VpnRepository.toggleAppBypass(app.packageName)
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(EmeraldGreen.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Android,
+                                    contentDescription = null,
+                                    tint = EmeraldGreen,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = app.appName,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (splitEnabled) TextPrimary else TextMuted
+                                )
+                                Text(
+                                    text = app.packageName,
+                                    fontSize = 11.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+
+                        Checkbox(
+                            checked = isBypassed,
+                            onCheckedChange = {
+                                if (splitEnabled) VpnRepository.toggleAppBypass(app.packageName)
+                            },
+                            enabled = splitEnabled,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = CyanAccent,
+                                checkmarkColor = Color.Black
+                            )
+                        )
+                    }
+                }
+                item { Spacer(modifier = Modifier.height(16.dp)) }
+            }
+        }
     }
 }

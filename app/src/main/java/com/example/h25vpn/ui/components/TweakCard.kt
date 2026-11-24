@@ -13,18 +13,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,10 +32,9 @@ import com.example.h25vpn.ui.theme.CyanAccent
 import com.example.h25vpn.ui.theme.DarkBorder
 import com.example.h25vpn.ui.theme.DarkSurface
 import com.example.h25vpn.ui.theme.DarkSurfaceVariant
-import com.example.h25vpn.ui.theme.PurpleAccent
+import com.example.h25vpn.ui.theme.GoldAccent
 import com.example.h25vpn.ui.theme.TextMuted
 import com.example.h25vpn.ui.theme.TextPrimary
-import com.example.h25vpn.ui.theme.TextSecondary
 
 @Composable
 fun TweakCard(
@@ -62,34 +58,35 @@ fun TweakCard(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(PurpleAccent.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CellTower,
-                    contentDescription = "Carrier Tweak",
-                    tint = PurpleAccent,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+            CarrierBadgeIcon(carrier = tweak.carrier, size = 40.dp)
 
             Spacer(modifier = Modifier.width(12.dp))
 
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = tweak.carrier,
+                        text = tweak.carrier.uppercase(),
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = CyanAccent,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = GoldAccent,
                         letterSpacing = 0.5.sp
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(DarkSurfaceVariant)
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = tweak.protocol.displayName,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = CyanAccent
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = tweak.name,
                     fontSize = 14.sp,
@@ -103,7 +100,8 @@ fun TweakCard(
                         text = "SNI: ${tweak.bugHostSni}",
                         fontSize = 11.sp,
                         color = TextMuted,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -111,7 +109,7 @@ fun TweakCard(
 
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = "Change Tweak",
+            contentDescription = "เปลี่ยนโปรไฟล์ค่ายเน็ต",
             tint = TextMuted,
             modifier = Modifier.size(20.dp)
         )

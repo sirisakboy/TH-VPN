@@ -55,6 +55,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.h25vpn.data.CarrierTweak
 import com.example.h25vpn.data.TunnelProtocol
 import com.example.h25vpn.data.VpnRepository
+import com.example.h25vpn.ui.components.CarrierBadgeIcon
 import com.example.h25vpn.ui.theme.CyanAccent
 import com.example.h25vpn.ui.theme.DarkBg
 import com.example.h25vpn.ui.theme.DarkBorder
@@ -79,7 +80,7 @@ fun TweaksScreen(
     var selectedCarrierFilter by remember { mutableStateOf("All") }
     var showCustomDialog by remember { mutableStateOf(false) }
 
-    val carrierFilters = listOf("All", "AIS", "DTAC", "TrueMove", "Smart", "Globe", "TNT", "Direct", "Gaming", "Custom")
+    val carrierFilters = listOf("All", "AIS", "TrueMove", "DTAC", "My NT", "Direct", "Custom")
 
     val filteredTweaks = remember(tweaks, selectedCarrierFilter) {
         if (selectedCarrierFilter == "All") {
@@ -119,13 +120,13 @@ fun TweaksScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "Carrier Tweaks & SNI",
+                        text = "โปรไฟล์ค่ายเน็ต & SNI",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
                     Text(
-                        text = "Select network payload configuration",
+                        text = "เลือกแพ็กเกจซิมหรือตั้งค่า Payload เอง",
                         fontSize = 12.sp,
                         color = TextMuted
                     )
@@ -248,20 +249,7 @@ private fun TweakListItem(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(PurpleAccent.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CellTower,
-                    contentDescription = tweak.carrier,
-                    tint = PurpleAccent,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+            CarrierBadgeIcon(carrier = tweak.carrier, size = 40.dp)
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -301,10 +289,19 @@ private fun TweakListItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                if (tweak.promoHint.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "📱 ${tweak.promoHint}",
+                        fontSize = 11.sp,
+                        color = CyanAccent
+                    )
+                }
+
                 if (tweak.bugHostSni.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "SNI: ${tweak.bugHostSni}",
+                        text = "SNI / Host: ${tweak.bugHostSni}",
                         fontSize = 11.sp,
                         color = TextMuted
                     )
