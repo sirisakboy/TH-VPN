@@ -28,6 +28,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
@@ -38,11 +40,14 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
@@ -54,6 +59,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,9 +71,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.h25vpn.R
+import com.example.h25vpn.auth.GoogleAuthHelper
 import com.example.h25vpn.data.DnsMode
 import com.example.h25vpn.data.VpnRepository
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import com.example.h25vpn.ui.theme.CoralRed
 import com.example.h25vpn.ui.theme.CyanAccent
 import com.example.h25vpn.ui.theme.DarkBg
 import com.example.h25vpn.ui.theme.DarkBorder
@@ -87,6 +99,13 @@ fun SettingsScreen(
     BackHandler { onNavigateBack() }
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val credentialManager = remember(context) { CredentialManager.create(context) }
+    val currentUser by remember { GoogleAuthHelper.authStateFlow() }
+        .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
+    var isSigningIn by remember { mutableStateOf(false) }
+    var authError by remember { mutableStateOf<String?>(null) }
+
     val selectedDns by VpnRepository.dnsMode.collectAsState()
     val mtu by VpnRepository.mtuSetting.collectAsState()
     val autoReconnect by VpnRepository.autoReconnect.collectAsState()
@@ -175,6 +194,138 @@ fun SettingsScreen(
                     fontSize = 11.sp,
                     color = TextSecondary
                 )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Section: Google Account & OAuth
+        SettingsSectionHeader(title = "บัญชี GOOGLE & OAUTH (GOOGLE ACCOUNT)")
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(DarkSurface)
+                .border(1.dp, DarkBorder, RoundedCornerShape(14.dp))
+                .padding(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(DarkSurfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (currentUser != null) Icons.Default.VerifiedUser else Icons.Default.AccountCircle,
+                        contentDescription = "Google Account",
+                        tint = if (currentUser != null) EmeraldGreen else CyanAccent,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = currentUser?.displayName?.takeIf { it.isNotBlank() }
+                            ?: if (currentUser != null) "เชื่อมต่อบัญชี Google แล้ว" else "ยังไม่ได้เชื่อมต่อบัญชี Google",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = currentUser?.email?.takeIf { it.isNotBlank() }
+                            ?: "Package: ${context.packageName}",
+                        fontSize = 12.sp,
+                        color = if (currentUser != null) EmeraldGreen else TextSecondary
+                    )
+                }
+            }
+
+            if (authError != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = authError ?: "",
+                    fontSize = 12.sp,
+                    color = CoralRed
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (currentUser == null) {
+                Button(
+                    onClick = {
+                        authError = null
+                        isSigningIn = true
+                        GoogleAuthHelper.onGoogleSignInClicked(
+                            context = context,
+                            credentialManager = credentialManager,
+                            scope = scope,
+                            onAuthSuccess = {
+                                isSigningIn = false
+                                authError = null
+                            },
+                            onAuthError = { msg ->
+                                isSigningIn = false
+                                authError = msg
+                            },
+                            onAuthCancelled = {
+                                isSigningIn = false
+                            }
+                        )
+                    },
+                    enabled = !isSigningIn,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CyanAccent,
+                        contentColor = DarkBg
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("google_sign_in_button")
+                ) {
+                    if (isSigningIn) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = DarkBg,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text = "Sign in with Google",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        GoogleAuthHelper.signOut(
+                            credentialManager = credentialManager,
+                            scope = scope
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("google_sign_out_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = "Sign out",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "ออกจากระบบบัญชี Google",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
 

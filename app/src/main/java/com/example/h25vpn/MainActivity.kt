@@ -27,12 +27,17 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.h25vpn.auth.GoogleAuthHelper
 import com.example.h25vpn.data.VpnRepository
+import com.example.h25vpn.ui.screens.AuthScreen
 import com.example.h25vpn.ui.screens.HomeScreen
 import com.example.h25vpn.ui.screens.LogsScreen
 import com.example.h25vpn.ui.screens.PromoHubScreen
@@ -48,6 +53,8 @@ import com.example.h25vpn.ui.theme.DarkSurfaceVariant
 import com.example.h25vpn.ui.theme.H25VPNTheme
 import com.example.h25vpn.ui.theme.TextMuted
 import com.example.h25vpn.ui.theme.TextPrimary
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
 
 enum class Screen {
     HOME,
@@ -71,8 +78,23 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             H25VPNTheme {
-                MainAppNavHost()
+                AppContent()
             }
+        }
+    }
+}
+
+@Composable
+fun AppContent() {
+    val currentUser by remember { GoogleAuthHelper.authStateFlow() }
+        .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
+
+    val user = currentUser
+    if (user == null) {
+        AuthScreen(onAuthSuccess = {})
+    } else {
+        key(user.uid) {
+            MainAppNavHost()
         }
     }
 }

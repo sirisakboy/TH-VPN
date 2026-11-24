@@ -54,9 +54,12 @@ jobs:
       - name: 🛠️ Ensure Gradle Wrapper is Executable
         run: chmod +x gradlew
 
-      - name: 🔑 Setup Android Keystore (Auto-Generate)
+      - name: 🔑 Setup Android Keystore (Permanent Base64 / Fallback)
         run: |
-          if [ ! -f "debug.keystore" ]; then
+          if [ ! -f "debug.keystore" ] && [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+            echo "✅ Restored permanent keystore from debug.keystore.base64"
+          elif [ ! -f "debug.keystore" ]; then
             keytool -genkeypair -v \
               -keystore debug.keystore \
               -storepass android \
