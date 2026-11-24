@@ -57,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.h25vpn.data.CarrierConfigLink
+import com.example.h25vpn.data.PublicConfigSources
 import com.example.h25vpn.data.PromoHubData
 import com.example.h25vpn.data.SimPromoItem
 import com.example.h25vpn.data.VpnRepository
@@ -80,6 +81,7 @@ fun PromoHubScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val syncing by VpnRepository.isSyncingServers.collectAsState()
     val selectedTweak by VpnRepository.selectedTweak.collectAsState()
 
     var activeTab by remember { mutableIntStateOf(0) }
@@ -360,10 +362,28 @@ fun PromoHubScreen(
                                 .padding(12.dp)
                         ) {
                             Text(
-                                text = "💡 หมายเหตุ: TH-VPN รองรับการทะลุโปรในตัวอยู่แล้วโดยไม่ต้องโหลดไฟล์นอก! แต่หากต้องการดาวน์โหลดไฟล์ .ehi / .npvs จาก connect-vpn.net/link/ ไปเปิดคู่กับแอปอื่น สามารถกดรับไฟล์ด้านล่างได้เลย",
+                                text = "ฟีดสาธารณะด้านล่างเป็น VPN ทั่วไป ไม่รับรองว่าใช้กับโปรซิมได้ทุกค่าย ไฟล์ .ehi/.npvs เดิมยังไม่ยืนยันวันหมดอายุ กรุณาตรวจสอบจากผู้แจกก่อนใช้งาน",
                                 fontSize = 12.sp,
                                 color = TextPrimary
                             )
+                        }
+                    }
+                    item {
+                        Button(
+                            onClick = { VpnRepository.syncFreeCloudServers() },
+                            enabled = !syncing,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (syncing) "กำลังอัปเดตฟีดสาธารณะ…" else "อัปเดตเซิร์ฟเวอร์จากฟีดสาธารณะ")
+                        }
+                    }
+                    items(PublicConfigSources.all, key = { it.id }) { source ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(source.title, color = CyanAccent, fontWeight = FontWeight.Bold)
+                            Text("VPN ทั่วไป • ยังไม่ทดสอบกับโปรซิม • ${source.path}", color = TextSecondary, fontSize = 12.sp)
+                            OutlinedButton(onClick = { openExternalUrl(context, source.pageUrl) }) {
+                                Text("ดูแหล่งแจกสาธารณะ", color = TextPrimary)
+                            }
                         }
                     }
                     items(filteredFiles, key = { it.id }) { cfg ->
@@ -376,7 +396,7 @@ fun PromoHubScreen(
                                 }
                             },
                             onDownloadExternal = {
-                                openExternalUrl(context, cfg.downloadUrl)
+                                openExternalUrl(context, cfg.pageUrl)
                             }
                         )
                     }
@@ -560,7 +580,7 @@ private fun CarrierConfigLinkCard(
             ) {
                 Icon(Icons.Default.CloudDownload, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(15.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("โหลดไฟล์นอก", fontSize = 12.sp, color = TextPrimary)
+                Text("ตรวจสอบกับผู้แจก", fontSize = 12.sp, color = TextPrimary)
             }
         }
     }

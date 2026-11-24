@@ -13,12 +13,7 @@ import java.util.UUID
 
 object VpnConfigParser {
 
-    val DEFAULT_SUBSCRIPTION_URLS = listOf(
-        "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/Thailand.txt",
-        "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/Singapore.txt",
-        "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/Japan.txt",
-        "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/Hong_Kong.txt"
-    )
+    val DEFAULT_SUBSCRIPTION_URLS = PublicConfigSources.all.map { it.primaryUrl }
 
     const val VPNGATE_CSV_URL = "http://www.vpngate.net/api/iphone/"
 
@@ -62,9 +57,9 @@ object VpnConfigParser {
                     else -> null
                 }
                 if (parsed != null && parsed.host.isNotBlank() && parsed.port in 1..65535) {
-                    val dedupKey = "${parsed.protocol.name}:${parsed.host}:${parsed.port}:${parsed.wsPath}"
+                    val dedupKey = TunnelRoutes.identity(parsed)
                     if (seenKeys.add(dedupKey)) {
-                        results.add(parsed)
+                        results.add(parsed.copy(id = "route-${UUID.nameUUIDFromBytes(TunnelRoutes.identity(parsed).toByteArray(Charsets.UTF_8))}"))
                     }
                 }
             }
@@ -82,18 +77,17 @@ object VpnConfigParser {
 
         val urls = (customSubUrls + DEFAULT_SUBSCRIPTION_URLS).distinct()
         for (feedUrl in urls) {
-            val countryHint = when {
-                feedUrl.contains("Thailand", ignoreCase = true) -> "Thailand" to "th"
-                feedUrl.contains("Singapore", ignoreCase = true) -> "Singapore" to "sg"
-                feedUrl.contains("Japan", ignoreCase = true) -> "Japan" to "jp"
-                feedUrl.contains("Hong_Kong", ignoreCase = true) -> "Hong Kong" to "hk"
-                feedUrl.contains("Taiwan", ignoreCase = true) -> "Taiwan" to "tw"
-                else -> null
+            val source = PublicConfigSources.all.find { it.primaryUrl == feedUrl }
+            val countryHint = source?.let { entry ->
+                entry.country?.let { it to (entry.countryCode ?: "sg") }
             }
-
-            val body = httpGetText(feedUrl, timeoutMs = 8000)
-            if (body.isNotBlank()) {
-                val parsedList = parseInputText(body, sourceTag = "Cloud Free")
+            val sourceTag = source?.title ?: "Custom subscription"
+            var parsedList = parseInputText(httpGetText(feedUrl, timeoutMs = 8000), sourceTag)
+            // A 200 HTML error page is not a valid subscription. Try the mirror on parse failure too.
+            if (parsedList.isEmpty() && source != null) {
+                parsedList = parseInputText(httpGetText(source.mirrorUrl, timeoutMs = 8000), sourceTag)
+            }
+            if (parsedList.isNotEmpty()) {
                 // Prefer WS / TLS / port 80 / 443 / 8080 / 2052 / 2082 / 8443 nodes for Thai Carrier SNI/Host bypass!
                 val prioritized = parsedList.sortedByDescending { node ->
                     var score = 0
@@ -114,7 +108,7 @@ object VpnConfigParser {
                     } else {
                         srv
                     }
-                    val key = "${enriched.protocol}:${enriched.host}:${enriched.port}"
+                    val key = TunnelRoutes.identity(enriched)
                     if (seenKeys.add(key)) {
                         allServers.add(enriched)
                     }
