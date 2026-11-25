@@ -26,9 +26,13 @@ import javax.net.ssl.X509TrustManager
  * Protects every outbound TCP socket via active [VpnService.protect] so traffic never loops!
  */
 class SshInjectorEngine(
-    private val vpnService: VpnService,
+    private val protectSocket: (Socket) -> Boolean,
     private val onLog: (String) -> Unit
 ) {
+    constructor(vpnService: VpnService, onLog: (String) -> Unit) : this(
+        protectSocket = { sock -> vpnService.protect(sock) },
+        onLog = onLog
+    )
     @Volatile
     private var sshConnection: Connection? = null
     private var portForwarder: DynamicPortForwarder? = null
@@ -45,7 +49,7 @@ class SshInjectorEngine(
         val conn = Connection(targetHost, targetPort)
         sshConnection = conn
         val proxyData = VpnProtectedInjectorProxy(
-            vpnService = vpnService,
+            protectSocket = protectSocket,
             server = server,
             tweak = tweak,
             onLog = onLog
@@ -91,7 +95,7 @@ class SshInjectorEngine(
     }
 
     private class VpnProtectedInjectorProxy(
-        private val vpnService: VpnService,
+        private val protectSocket: (Socket) -> Boolean,
         private val server: VpnServer,
         private val tweak: CarrierTweak,
         private val onLog: (String) -> Unit
@@ -117,8 +121,8 @@ class SshInjectorEngine(
             }
 
             val tcpSocket = Socket()
-            if (!vpnService.protect(tcpSocket)) {
-                onLog("Warning: VpnService.protect(socket) returned false")
+            if (!protectSocket(tcpSocket)) {
+                onLog("Warning: protectSocket(socket) returned false")
             }
             val resolved = InetAddress.getByName(connectHost)
             tcpSocket.connect(InetSocketAddress(resolved, connectPort), connectTimeout)
