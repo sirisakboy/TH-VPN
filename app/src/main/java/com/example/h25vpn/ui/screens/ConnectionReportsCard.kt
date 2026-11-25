@@ -5,6 +5,8 @@ import android.net.ConnectivityManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -94,6 +96,15 @@ fun ConnectionReportsCard() {
                 Text("ส่งคิวเมื่อออนไลน์ (ระบบอาจหน่วงเวลา)", modifier = Modifier.padding(top = 12.dp))
             }
             Text(status)
+            TextButton(enabled = sync, onClick = { ConnectionReports.enqueue() }) { Text("ลองส่งคิวตอนนี้") }
+            TextButton(onClick = {
+                ConnectionReports.setSync(false)
+                val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestScopes(Scope(DriveReportWorker.SCOPE)).build()
+                GoogleSignIn.getClient(context, options).revokeAccess().addOnCompleteListener { task ->
+                    ConnectionReports.updateStatus(if (task.isSuccessful) "ถอนสิทธิ์ Google Drive แล้ว" else "หยุดส่งแล้ว ถอนสิทธิ์เพิ่มเติมได้ในบัญชี Google ของคุณ")
+                }
+            }) { Text("หยุดส่งและถอนสิทธิ์ Drive") }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { preview = ConnectionReports.preview() }) { Text("ดูข้อมูลที่จะส่ง") }
                 OutlinedButton(onClick = { ConnectionReports.clear() }) { Text("ลบคิวในเครื่อง") }
@@ -130,5 +141,5 @@ fun ConnectionReportsCard() {
         confirmButton = { TextButton(onClick = { ConnectionReports.setEnabled(true); consent = false }) { Text("อนุญาตบันทึก") } },
         dismissButton = { TextButton(onClick = { consent = false }) { Text("ยกเลิก") } })
     preview?.let { text -> AlertDialog(onDismissRequest = { preview = null }, title = { Text("ตัวอย่างคิวล่าสุด 5 รายงาน") },
-        text = { Text(text.take(6000)) }, confirmButton = { TextButton(onClick = { preview = null }) { Text("ปิด") } }) }
+        text = { Text(text.take(6000), modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) }, confirmButton = { TextButton(onClick = { preview = null }) { Text("ปิด") } }) }
 }

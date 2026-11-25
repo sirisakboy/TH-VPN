@@ -3,8 +3,12 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.google.services)
+    alias(libs.plugins.google.services) apply false
 }
+
+// Local-only VPN remains usable without a Firebase project. Never fabricate project credentials.
+val firebaseConfigured = file("google-services.json").isFile
+if (firebaseConfigured) apply(plugin = "com.google.gms.google-services")
 
 android {
     namespace = "com.example.h25vpn"
@@ -14,7 +18,10 @@ android {
         applicationId = "com.aistudio.h25vpn.bxtkp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20
+        buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
+        buildConfigField("String", "OAUTH_SIGNING_SHA1", "\"${System.getenv("OAUTH_SIGNING_SHA1") ?: ""}\"")
+        buildConfigField("String", "OAUTH_SIGNING_SHA256", "\"${System.getenv("OAUTH_SIGNING_SHA256") ?: ""}\"")
+        versionCode = 21
         versionName = "1.0.0"
 
         ndk {
@@ -26,10 +33,10 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("${rootDir}/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            storeFile = file(System.getenv("SIGNING_STORE_FILE") ?: "${rootDir}/debug.keystore")
+            storePassword = System.getenv("SIGNING_STORE_PASSWORD") ?: "android"
+            keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: "androiddebugkey"
+            keyPassword = System.getenv("SIGNING_KEY_PASSWORD") ?: "android"
         }
         getByName("debug") {
             storeFile = file("${rootDir}/debug.keystore")
@@ -63,6 +70,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
@@ -95,6 +103,8 @@ android {
 }
 
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
+    testImplementation("org.json:json:20240303")
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -109,6 +119,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.1")
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.androidx.credentials)
@@ -117,9 +128,5 @@ dependencies {
     implementation(libs.play.services.auth)
 
     testImplementation(libs.junit)
-    testImplementation(libs.robolectric)
-    testImplementation(libs.androidx.test.core)
-    testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
